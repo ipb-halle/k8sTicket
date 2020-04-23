@@ -1,0 +1,461 @@
+package proxyfunctions
+
+import (
+	"container/list"
+	"crypto/rand"
+	"errors"
+	"fmt"
+	"log"
+	"net"
+	"net/http"
+	"net/http/httputil"
+	"os"
+	"strconv"
+	"sync"
+	"time"
+
+	"github.com/gorilla/mux"
+	"github.com/gorilla/websocket"
+)
+
+const (
+	// Time allowed to write a message to the peer.
+	writeWait = 10 * time.Second
+
+	// Maximum message size allowed from peer.
+	maxMessageSize = 8192
+
+	// Time allowed to read the next pong message from the peer.
+	pongWait = 10 * time.Second
+
+	// Send pings to peer with this period. Must be less than pongWait.
+	//pingPeriod = (pongWait * 9) / 10
+	pingPeriod = 5 * time.Second
+
+	// Time to wait before force close on connection.
+	closeGracePeriod = 30 * time.Second
+)
+
+//Stucts for Server and Tickets
+
+// The Config has a Path and a Host.
+type Config struct {
+	Path string
+	Host string
+}
+
+// A ticket has redundant information server and token for easier access.
+// It will be updated everytime it is used.
+type ticket struct {
+	LastUsed time.Time
+	server   int
+	token    string
+	mux      sync.Mutex
+}
+
+// A server knows its maximal number of tickets, its Config,
+// all tickets based on their tockens and it includes the http.Handler
+// serving the proxy requests.
+type server struct {
+	MaxTickets int
+	Config     Config
+	Tickets    map[string]*ticket
+	Handler    http.Handler
+	UseAllowed bool
+	mux        sync.Mutex
+}
+
+// The Serverlist includes the servers in a slice and the asked quiers (Tqueries).
+// All new connections will lead to new Tqueries. When there are free resources
+// availabe, a ticket will be generated and the Tqueries will be removed from
+// the list.
+type Serverlist struct {
+	servers  []server //Use a list or map here!
+	Tqueries list.List
+	Prefix   string
+	mux      sync.Mutex
+}
+
+// This function generates a token like 31f4ef3d.
+// It is used to identify the tickets in k8sticket.
+func tokenGenerator() string {
+	b := make([]byte, 4)
+	rand.Read(b)
+	return fmt.Sprintf("%x", b)
+}
+
+//Serverlist functions
+
+// AddServer This function adds a new server to the server list.
+// It wants to know the number of maximal tickets for this server and its
+// Configuration.
+func (list *Serverlist) AddServer(maxtickets int, Config Config) (int, error) {
+	//defer list.mux.Unlock()
+	list.deletionmanager() //first check if servers should be deleted
+	list.mux.Lock()
+	log.Println("Server: Adding Server " + Config.Host + Config.Path)
+	list.servers = append(list.servers, server{
+		MaxTickets: maxtickets,
+		Config:     Config,
+		Handler:    generateProxy(Config),
+		UseAllowed: true,
+		Tickets:    make(map[string]*ticket),
+	})
+	id := len(list.servers) - 1
+	list.mux.Unlock()
+	list.querrymanager()
+	//not sure which kind of errors could happen, let's see in the future
+	return id, nil
+}
+
+// SetServerDeletion This function marks a server to be deleted.
+func (list *Serverlist) SetServerDeletion(id int) error {
+	list.mux.Lock()
+	if len(list.servers)-1 < id {
+		return (errors.New("Server deletion: id does not exist"))
+	}
+	list.mux.Unlock()
+	list.servers[id].mux.Lock()
+	list.servers[id].UseAllowed = false
+	list.servers[id].mux.Unlock()
+	list.deletionmanager()
+	return nil
+}
+
+// RemoveServer This function tries to delete a server. It will only succeed if the server
+// is not occupied by a ticket!
+// If the server is still busy, it will be marked for deletion by the
+// UseAllowed bool.
+func (list *Serverlist) removeServer(id int) error {
+	if len(list.servers)-1 < id {
+		return (errors.New("Server deletion: id does not exist"))
+	}
+	//Check if there are still open sessions
+	if len(list.servers[id].Tickets) == 0 {
+		log.Println("Server: Deleting server " + strconv.Itoa(id))
+		copy(list.servers[id:], list.servers[id+1:])
+		//list.servers[len(list.servers[id:])-1] = nil
+		list.servers = list.servers[:len(list.servers)-1]
+	} else {
+		log.Println("Server: Server " + strconv.Itoa(id) + " is marked for deletion, but occupied.")
+		return (errors.New("Server deletion: Server still occupied"))
+	}
+	return (nil)
+}
+
+func (list *Serverlist) deletionmanager() {
+	defer list.mux.Unlock()
+	list.mux.Lock()
+	for i := 0; i < len(list.servers); i++ {
+		list.servers[i].mux.Lock()
+		if list.servers[i].UseAllowed == false {
+			list.servers[i].mux.Unlock() //unlock the server before it is removed.
+			err := list.removeServer(i)
+			//modify counter (that's possible in go) because otherwise we would skip items when the deletion was successful
+			if err == nil {
+				i = i - 1
+			}
+		} else { //needs to be with an else, because if the server was removed, we can not unlock the mux anymore
+			list.servers[i].mux.Unlock()
+		}
+	}
+}
+
+// addTicket This functions adds a new ticket to the Serverlist on the first
+// available server. It will return an error if there are no free Tickets
+// availabe in the Serverlist.
+func (list *Serverlist) addTicket() (*ticket, error) {
+	for num := range list.servers {
+		list.servers[num].mux.Lock()
+		log.Println("Ticket: Trying " + strconv.Itoa(num))
+		if list.servers[num].hasSlots() == true && list.servers[num].UseAllowed == true {
+			list.servers[num].mux.Unlock()
+			return list.servers[num].newTicket(num), nil
+		}
+		list.servers[num].mux.Unlock()
+	}
+	return nil, errors.New("No ticket left")
+}
+
+// removeTicket This function will remove a ticket from a server in the server list.
+func (list *Serverlist) removeTicket(token string) error {
+	for id := range list.servers {
+		if _, ok := list.servers[id].Tickets[token]; ok {
+			delete(list.servers[id].Tickets, token)
+			list.deletionmanager()
+			list.querrymanager()
+		} else {
+			return (errors.New("Ticket: No such ticket available"))
+		}
+	}
+	return (nil)
+}
+
+// TicketWatchdog This function checks if tickets a still valid (updated in specified time).
+// If the ticket was not updated in time, it will be removed from the server.
+func (list *Serverlist) TicketWatchdog() {
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+	//defer list.mux.Unlock()
+	for {
+		select {
+		case <-ticker.C:
+			list.mux.Lock()
+			for id := range list.servers {
+				for token := range list.servers[id].Tickets {
+					list.servers[id].Tickets[token].mux.Lock()
+					if time.Since(list.servers[id].Tickets[token].LastUsed).Milliseconds() > int64(3)*time.Second.Milliseconds() {
+						list.servers[id].Tickets[token].mux.Unlock()
+						delete(list.servers[id].Tickets, token)
+						log.Println("Ticket: Deleting ticket " + token)
+					} else {
+						list.servers[id].Tickets[token].mux.Unlock()
+					}
+				}
+			}
+			list.mux.Unlock()
+			list.deletionmanager()
+			list.querrymanager()
+		}
+	}
+}
+
+// querrymanager This function checks the Tqueries and creates a new ticket if resources are
+// available.
+func (list *Serverlist) querrymanager() {
+	defer list.mux.Unlock()
+	list.mux.Lock()
+	if list.Tqueries.Len() > 0 {
+		log.Println("Queries: There are " + strconv.Itoa(list.Tqueries.Len()) + " waiting")
+		t, err := list.addTicket()
+		if err == nil {
+			ChannelElement := list.Tqueries.Front()
+			ChannelValue := ChannelElement.Value
+			channel, ok := ChannelValue.(chan *ticket)
+			if !ok {
+				log.Printf("FATAL: got data of type %T but wanted chan!", ChannelValue)
+				os.Exit(1)
+			}
+			channel <- t
+			close(channel)
+			list.Tqueries.Remove(ChannelElement)
+		} else {
+			log.Println(err)
+		}
+	}
+}
+
+//Server functions
+
+// hasSlots This function checks if a server has still free slots for new tickets.
+func (server *server) hasSlots() bool {
+	if len(server.Tickets) < server.MaxTickets {
+		return true
+	}
+	return false
+}
+
+// newTicket This function adds a new ticket to a server and returns the new ticket.
+// It is only used internally.
+func (server *server) newTicket(servernum int) *ticket {
+	defer server.mux.Unlock()
+	server.mux.Lock()
+	token := tokenGenerator()
+	newTicket := &ticket{
+		LastUsed: time.Now(),
+		server:   servernum,
+		token:    token,
+	}
+	server.Tickets[token] = newTicket
+	return (newTicket)
+}
+
+// update This functions updates a ticket as long as the chan is open.
+func (ticket *ticket) update(alive chan struct{}) {
+	ticker := time.NewTicker(3*time.Second - 10*time.Millisecond) //change to variable
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			ticket.mux.Lock()
+			ticket.LastUsed = time.Now()
+			log.Println("Ticket: refreshing: ", ticket.token+"  "+ticket.LastUsed.Format("2006-01-02 15:04:05"))
+			ticket.mux.Unlock()
+		case <-alive:
+			return
+		}
+	}
+}
+
+//Functions for serving the webcontent
+
+//MainHandler This function provides the toplevel handler for the proxy requests
+func (list *Serverlist) MainHandler(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	servernum, _ := strconv.Atoi(vars["s"])
+	log.Println("PATH:", vars["serverpath"])
+	list.callServer(w, r, servernum)
+}
+
+// callServer This function redirects client requests to the according proxy handlers.
+func (list *Serverlist) callServer(w http.ResponseWriter, r *http.Request, id int) {
+	alive := make(chan struct{})
+	defer close(alive)
+	list.mux.Lock()
+	if id >= 0 && id < len(list.servers) {
+		if list.servers[id].Handler != nil {
+			//Middleware check Ticket
+			cookie, err := r.Cookie("stoken")
+			if err == http.ErrNoCookie {
+				http.Error(w, "No valid cookie!", http.StatusForbidden)
+				list.mux.Unlock()
+			} else {
+				//token := r.Header.Get("X-Session-Token")
+				token := cookie.Value
+				if ticket, ok := list.servers[id].Tickets[token]; ok {
+					list.mux.Unlock()
+					ticket.mux.Lock()
+					ticket.LastUsed = time.Now()
+					log.Println("Ticket:", token+"  "+ticket.LastUsed.Format("2006-01-02 15:04:05"))
+					ticket.mux.Unlock()
+					go ticket.update(alive)
+					list.servers[id].mux.Lock()
+					ThisHandler := &list.servers[id].Handler
+					list.servers[id].mux.Unlock()
+					http.StripPrefix("/"+list.Prefix+"/"+strconv.Itoa(id)+"/", *ThisHandler).ServeHTTP(w, r)
+				} else {
+					list.mux.Unlock()
+					http.Error(w, "Forbidden", http.StatusForbidden)
+				}
+			}
+		} else {
+			list.mux.Unlock()
+		}
+	} else {
+		list.mux.Unlock()
+		http.NotFound(w, r)
+	}
+}
+
+//ServeHome This function serves the home page.
+func (list *Serverlist) ServeHome(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/"+list.Prefix && r.URL.Path != "/"+list.Prefix+"/" {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	http.ServeFile(w, r, "web/static/home.html")
+}
+
+// This is just the ws ping
+func ping(ws *websocket.Conn, done chan struct{}) {
+	ticker := time.NewTicker(pingPeriod)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			log.Println("ping: Ping!")
+			if err := ws.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(writeWait)); err != nil {
+				log.Println("ping:", err)
+				close(done)
+			}
+		case <-done:
+			return
+		}
+	}
+}
+
+// This function checks for internal ws errors.
+func internalError(ws *websocket.Conn, msg string, err error) {
+	log.Println(msg, err)
+	ws.WriteMessage(websocket.TextMessage, []byte("Internal server error."))
+}
+
+var upgrader = websocket.Upgrader{}
+
+// ServeWs This handler serves the Websocket connection to aquire the cookie & ticket.
+func (list *Serverlist) ServeWs(w http.ResponseWriter, r *http.Request) {
+	running := make(chan struct{})
+	wswrite := make(chan string)
+	//defer close(running)
+	log.Print("WS: connection opened!\n")
+	ws, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println("upgrade:", err)
+		return
+	}
+	go func() {
+		for {
+			select {
+			case string := <-wswrite:
+				ws.SetWriteDeadline(time.Now().Add(writeWait))
+				if err := ws.WriteMessage(websocket.TextMessage, []byte(string)); err != nil {
+					log.Println("Ticket: Ticker:", err)
+					if _, ok := <-running; ok { //if the channel is still open, close it
+						close(running)
+					}
+				}
+			case <-running:
+				ws.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+				ws.Close()
+				return
+			}
+		}
+	}()
+	go writeHello(ws, running, wswrite)
+	go ping(ws, running)
+	ws.SetPongHandler(func(string) error { ws.SetReadDeadline(time.Now().Add(pongWait)); return nil })
+	querry := make(chan *ticket, 1)
+	list.mux.Lock()
+	myElement := list.Tqueries.PushBack(querry)
+	list.mux.Unlock()
+	defer func() {
+		list.mux.Lock()
+		list.Tqueries.Remove(myElement)
+		list.mux.Unlock()
+	}()
+	list.querrymanager()
+	go func() {
+		ticket := <-querry
+		wswrite <- "tkn#" + ticket.token + "@" + strconv.Itoa(ticket.server)
+		close(running)
+	}()
+	ticketticker := time.NewTicker(10 * time.Second)
+	defer ticketticker.Stop()
+	for {
+		select {
+		case <-ticketticker.C:
+			wswrite <- "msg#Waiting for ticket, please hold the line!"
+		case <-running:
+			return
+		}
+	}
+}
+
+// Writes a message to the frontend to welcome the user
+func writeHello(ws *websocket.Conn, done chan struct{}, writech chan string) {
+	writech <- "msg#Welcome generating ticket!"
+}
+
+// Generates a proxxy based on the Configuration in Serverlist.servers
+func generateProxy(conf Config) http.Handler {
+	proxy := &httputil.ReverseProxy{Director: func(req *http.Request) {
+		originHost := conf.Host
+		req.Header.Add("X-Forwarded-Host", req.Host)
+		req.Header.Add("X-Origin-Host", originHost)
+		req.Host = originHost
+		req.URL.Host = originHost
+		req.URL.Scheme = "http"
+		req.URL.Path = conf.Path + req.URL.Path
+
+	}, Transport: &http.Transport{
+		Dial: (&net.Dialer{
+			Timeout: 5 * time.Second,
+		}).Dial,
+	}}
+
+	return proxy
+}
