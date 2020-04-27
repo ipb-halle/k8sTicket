@@ -15,11 +15,20 @@ func main() {
 	var prefix = "gmweb"
 	list.Prefix = prefix
 
-	list.AddServer(1, proxyfunctions.Config{Path: "/", Host: "127.0.0.1:3838"})
-	list.AddServer(1, proxyfunctions.Config{Path: "/", Host: "127.0.0.1:3838"})
-	list.AddServer(1, proxyfunctions.Config{Path: "/", Host: "127.0.0.1:3838"})
+	if _, err := list.AddServer(1, proxyfunctions.Config{Path: "/", Host: "127.0.0.1:3838"}); err != nil {
+		log.Println("Error Occured: ", err)
+	}
+	if _, err := list.AddServer(1, proxyfunctions.Config{Path: "/", Host: "127.0.0.1:3838"}); err != nil {
+		log.Println("Error Occured: ", err)
+	}
+	if _, err := list.AddServer(1, proxyfunctions.Config{Path: "/", Host: "127.0.0.1:3838"}); err != nil {
+		log.Println("Error Occured: ", err)
+	}
 	go list.TicketWatchdog()
+	//no need to check the error in the test application
+	//nolint:errchk
 	go time.AfterFunc(20*time.Second, func() { list.SetServerDeletion(1) })
+	//nolint:errchk
 	go time.AfterFunc(60*time.Second, func() { list.AddServer(1, proxyfunctions.Config{Path: "/", Host: "127.0.0.1:3838"}) })
 	// go time.AfterFunc(90*time.Second, func() { list.AddServer(1, proxyfunctions.Config{Path: "/", Host: "127.0.0.1:3838"}) })
 	r.HandleFunc("/"+list.Prefix+"/{s}/{serverpath:.*}", list.MainHandler)
