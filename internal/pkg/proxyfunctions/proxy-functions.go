@@ -22,9 +22,6 @@ const (
 	// Time allowed to write a message to the peer.
 	writeWait = 10 * time.Second
 
-	// Maximum message size allowed from peer.
-	maxMessageSize = 8192
-
 	// Time allowed to read the next pong message from the peer.
 	pongWait = 10 * time.Second
 
@@ -32,8 +29,8 @@ const (
 	//pingPeriod = (pongWait * 9) / 10
 	pingPeriod = 5 * time.Second
 
-	// Time to wait before force close on connection.
-	closeGracePeriod = 30 * time.Second
+	//the time during ticket updates and ticket removal
+	ticketTime = 3 * time.Second
 )
 
 //Stucts for Server and Tickets
@@ -80,7 +77,11 @@ type Serverlist struct {
 // It is used to identify the tickets in k8sticket.
 func tokenGenerator() string {
 	b := make([]byte, 4)
-	rand.Read(b)
+	_, err := rand.Read(b)
+	if err != nil {
+		log.Println("FATAL: tokenGenerator: ", err)
+		os.Exit(1)
+	}
 	return fmt.Sprintf("%x", b)
 }
 
@@ -148,7 +149,7 @@ func (list *Serverlist) deletionmanager() {
 	list.mux.Lock()
 	for i := 0; i < len(list.servers); i++ {
 		list.servers[i].mux.Lock()
-		if list.servers[i].UseAllowed == false {
+		if !list.servers[i].UseAllowed {
 			list.servers[i].mux.Unlock() //unlock the server before it is removed.
 			err := list.removeServer(i)
 			//modify counter (that's possible in go) because otherwise we would skip items when the deletion was successful
@@ -168,7 +169,7 @@ func (list *Serverlist) addTicket() (*ticket, error) {
 	for num := range list.servers {
 		list.servers[num].mux.Lock()
 		log.Println("Ticket: Trying " + strconv.Itoa(num))
-		if list.servers[num].hasSlots() == true && list.servers[num].UseAllowed == true {
+		if list.servers[num].hasSlots() && list.servers[num].UseAllowed {
 			list.servers[num].mux.Unlock()
 			return list.servers[num].newTicket(num), nil
 		}
@@ -178,45 +179,43 @@ func (list *Serverlist) addTicket() (*ticket, error) {
 }
 
 // removeTicket This function will remove a ticket from a server in the server list.
-func (list *Serverlist) removeTicket(token string) error {
-	for id := range list.servers {
-		if _, ok := list.servers[id].Tickets[token]; ok {
-			delete(list.servers[id].Tickets, token)
-			list.deletionmanager()
-			list.querrymanager()
-		} else {
-			return (errors.New("Ticket: No such ticket available"))
-		}
-	}
-	return (nil)
-}
+// func (list *Serverlist) removeTicket(token string) error {
+// 	for id := range list.servers {
+// 		if _, ok := list.servers[id].Tickets[token]; ok {
+// 			delete(list.servers[id].Tickets, token)
+// 			list.deletionmanager()
+// 			list.querrymanager()
+// 		} else {
+// 			return (errors.New("Ticket: No such ticket available"))
+// 		}
+// 	}
+// 	return (nil)
+// }
 
 // TicketWatchdog This function checks if tickets a still valid (updated in specified time).
 // If the ticket was not updated in time, it will be removed from the server.
 func (list *Serverlist) TicketWatchdog() {
-	ticker := time.NewTicker(3 * time.Second)
+	ticker := time.NewTicker(ticketTime)
 	defer ticker.Stop()
 	//defer list.mux.Unlock()
 	for {
-		select {
-		case <-ticker.C:
-			list.mux.Lock()
-			for id := range list.servers {
-				for token := range list.servers[id].Tickets {
-					list.servers[id].Tickets[token].mux.Lock()
-					if time.Since(list.servers[id].Tickets[token].LastUsed).Milliseconds() > int64(3)*time.Second.Milliseconds() {
-						list.servers[id].Tickets[token].mux.Unlock()
-						delete(list.servers[id].Tickets, token)
-						log.Println("Ticket: Deleting ticket " + token)
-					} else {
-						list.servers[id].Tickets[token].mux.Unlock()
-					}
+		<-ticker.C
+		list.mux.Lock()
+		for id := range list.servers {
+			for token := range list.servers[id].Tickets {
+				list.servers[id].Tickets[token].mux.Lock()
+				if time.Since(list.servers[id].Tickets[token].LastUsed).Milliseconds() > int64(3)*time.Second.Milliseconds() {
+					list.servers[id].Tickets[token].mux.Unlock()
+					delete(list.servers[id].Tickets, token)
+					log.Println("Ticket: Deleting ticket " + token)
+				} else {
+					list.servers[id].Tickets[token].mux.Unlock()
 				}
 			}
-			list.mux.Unlock()
-			list.deletionmanager()
-			list.querrymanager()
 		}
+		list.mux.Unlock()
+		list.deletionmanager()
+		list.querrymanager()
 	}
 }
 
@@ -249,10 +248,7 @@ func (list *Serverlist) querrymanager() {
 
 // hasSlots This function checks if a server has still free slots for new tickets.
 func (server *server) hasSlots() bool {
-	if len(server.Tickets) < server.MaxTickets {
-		return true
-	}
-	return false
+	return len(server.Tickets) < server.MaxTickets
 }
 
 // newTicket This function adds a new ticket to a server and returns the new ticket.
@@ -272,7 +268,7 @@ func (server *server) newTicket(servernum int) *ticket {
 
 // update This functions updates a ticket as long as the chan is open.
 func (ticket *ticket) update(alive chan struct{}) {
-	ticker := time.NewTicker(3*time.Second - 10*time.Millisecond) //change to variable
+	ticker := time.NewTicker(ticketTime - 10*time.Millisecond)
 	defer ticker.Stop()
 	for {
 		select {
@@ -369,10 +365,10 @@ func ping(ws *websocket.Conn, done chan struct{}) {
 }
 
 // This function checks for internal ws errors.
-func internalError(ws *websocket.Conn, msg string, err error) {
-	log.Println(msg, err)
-	ws.WriteMessage(websocket.TextMessage, []byte("Internal server error."))
-}
+// func internalError(ws *websocket.Conn, msg string, err error) {
+// 	log.Println(msg, err)
+// 	ws.WriteMessage(websocket.TextMessage, []byte("Internal server error."))
+// }
 
 var upgrader = websocket.Upgrader{}
 
@@ -391,15 +387,19 @@ func (list *Serverlist) ServeWs(w http.ResponseWriter, r *http.Request) {
 		for {
 			select {
 			case string := <-wswrite:
-				ws.SetWriteDeadline(time.Now().Add(writeWait))
+				if err := ws.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
+					log.Println("Ticket: WS: SetWriteDeadline: ", err)
+				}
 				if err := ws.WriteMessage(websocket.TextMessage, []byte(string)); err != nil {
-					log.Println("Ticket: Ticker:", err)
+					log.Println("Ticket: WS: WriteMessage: ", err)
 					if _, ok := <-running; ok { //if the channel is still open, close it
 						close(running)
 					}
 				}
 			case <-running:
-				ws.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+				if err := ws.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")); err != nil {
+					log.Println("Ticket: WS: WriteMessage: CloseMessage: ", err)
+				}
 				ws.Close()
 				return
 			}
@@ -407,7 +407,11 @@ func (list *Serverlist) ServeWs(w http.ResponseWriter, r *http.Request) {
 	}()
 	go writeHello(ws, running, wswrite)
 	go ping(ws, running)
-	ws.SetPongHandler(func(string) error { ws.SetReadDeadline(time.Now().Add(pongWait)); return nil })
+	ws.SetPongHandler(func(string) error {
+		err := ws.SetReadDeadline(time.Now().Add(pongWait))
+		log.Println("Pong: WS: SetReadDeadline: ", err)
+		return err
+	})
 	querry := make(chan *ticket, 1)
 	list.mux.Lock()
 	myElement := list.Tqueries.PushBack(querry)
