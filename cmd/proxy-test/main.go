@@ -26,9 +26,9 @@ func main() {
 	}
 	go list.TicketWatchdog()
 	//no need to check the error in the test application
-	//nolint:errchk
+	////nolint:errcheck
 	go time.AfterFunc(20*time.Second, func() { list.SetServerDeletion(1) })
-	//nolint:errchk
+	//nolint:errcheck
 	go time.AfterFunc(60*time.Second, func() { list.AddServer(1, proxyfunctions.Config{Path: "/", Host: "127.0.0.1:3838"}) })
 	// go time.AfterFunc(90*time.Second, func() { list.AddServer(1, proxyfunctions.Config{Path: "/", Host: "127.0.0.1:3838"}) })
 	r.HandleFunc("/"+list.Prefix+"/{s}/{serverpath:.*}", list.MainHandler)
