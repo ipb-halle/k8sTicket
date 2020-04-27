@@ -17,9 +17,10 @@ jobs:
     runs-on: ubuntu-latest
 
     # Steps represent a sequence of tasks that will be executed as part of the job
+    name: golangci-lint
     steps:
-      - name: golangci-lint
-        uses: actions-contrib/golangci-lint@v1
+      - uses: actions/checkout@master
+      - uses: actions-contrib/golangci-lint@v1
         #with:
           # golangci-lint docker release tag
           #golangci_lint_version: # optional, default is v1.23
