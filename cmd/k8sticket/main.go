@@ -26,7 +26,9 @@ import (
 	"github.com/culpinnis/k8sTicket/internal/pkg/k8sfunctions"
 	"github.com/culpinnis/k8sTicket/internal/pkg/proxyfunctions"
 	"github.com/gorilla/mux"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest" //
 	// Uncomment to load all auth plugins
@@ -57,6 +59,32 @@ func main() {
 		panic(err.Error())
 	}
 	myns := k8sfunctions.Namespace()
+
+	//test controller Functions
+	mycontroller := k8sfunctions.New_proxy_controller(myns)
+	defer close(mycontroller.Stopper)
+	defer runtime.HandleCrash()
+	myhandler := k8sfunctions.Handler{
+		AddFunc: func(obj interface{}) {
+			pod := obj.(*v1.Pod)
+			fmt.Println("New Pod")
+			fmt.Println(pod)
+		},
+		DeleteFunc: func(obj interface{}) {
+			pod := obj.(*v1.Pod)
+			fmt.Println("Delete Pod")
+			fmt.Println(pod)
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			pod_old := oldObj.(*v1.Pod)
+			pod_new := newObj.(*v1.Pod)
+			fmt.Println("Modified Pod")
+			fmt.Println(pod_old)
+			fmt.Println(pod_new)
+		},
+	}
+	k8sfunctions.Add_handler_to_controller(&myhandler, &mycontroller)
+	go mycontroller.Informer.Run(mycontroller.Stopper)
 	fmt.Printf("********\nI am running in %s\n********\n", myns)
 	// get pods in all the namespaces by omitting namespace
 	// Or specify namespace to get pods in particular namespace
