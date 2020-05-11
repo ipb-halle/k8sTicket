@@ -45,7 +45,7 @@ type Config struct {
 // It will be updated everytime it is used.
 type ticket struct {
 	LastUsed time.Time
-	server   int
+	server   string
 	token    string
 	mux      sync.Mutex
 }
@@ -67,10 +67,17 @@ type server struct {
 // availabe, a ticket will be generated and the Tqueries will be removed from
 // the list.
 type Serverlist struct {
-	servers  []server //Use a list or map here!
+	servers  map[string]*server //Use a list or map here!
 	Tqueries list.List
 	Prefix   string
 	mux      sync.Mutex
+}
+
+func NewServerlist(prefix string) *Serverlist {
+	list := new(Serverlist)
+	list.servers = make(map[string]*server)
+	list.Prefix = prefix
+	return (list)
 }
 
 // This function generates a token like 31f4ef3d.
@@ -90,35 +97,38 @@ func tokenGenerator() string {
 // AddServer This function adds a new server to the server list.
 // It wants to know the number of maximal tickets for this server and its
 // Configuration.
-func (list *Serverlist) AddServer(maxtickets int, Config Config) (int, error) {
+func (list *Serverlist) AddServer(name string, maxtickets int, Config Config) error {
 	//defer list.mux.Unlock()
 	list.deletionmanager() //first check if servers should be deleted
 	list.mux.Lock()
-	log.Println("Server: Adding Server " + Config.Host + Config.Path)
-	list.servers = append(list.servers, server{
-		MaxTickets: maxtickets,
-		Config:     Config,
-		Handler:    generateProxy(Config),
-		UseAllowed: true,
-		Tickets:    make(map[string]*ticket),
-	})
-	id := len(list.servers) - 1
+	log.Println("Server: Adding Server " + name + " " + Config.Host + Config.Path)
+	if _, ok := list.servers[name]; !ok {
+		list.servers[name] = &server{
+			MaxTickets: maxtickets,
+			Config:     Config,
+			Handler:    generateProxy(Config),
+			UseAllowed: true,
+			Tickets:    make(map[string]*ticket),
+		}
+	} else {
+		return (errors.New("Server with the name " + name + "already exists"))
+	}
 	list.mux.Unlock()
 	list.querrymanager()
 	//not sure which kind of errors could happen, let's see in the future
-	return id, nil
+	return nil //id can change when a server is deleted!
 }
 
 // SetServerDeletion This function marks a server to be deleted.
-func (list *Serverlist) SetServerDeletion(id int) error {
+func (list *Serverlist) SetServerDeletion(name string) error {
 	list.mux.Lock()
-	if len(list.servers)-1 < id {
-		return (errors.New("Server deletion: id does not exist"))
+	if _, ok := list.servers[name]; !ok {
+		return (errors.New("Server deletion: name does not exist"))
 	}
 	list.mux.Unlock()
-	list.servers[id].mux.Lock()
-	list.servers[id].UseAllowed = false
-	list.servers[id].mux.Unlock()
+	list.servers[name].mux.Lock()
+	list.servers[name].UseAllowed = false
+	list.servers[name].mux.Unlock()
 	list.deletionmanager()
 	return nil
 }
@@ -127,18 +137,16 @@ func (list *Serverlist) SetServerDeletion(id int) error {
 // is not occupied by a ticket!
 // If the server is still busy, it will be marked for deletion by the
 // UseAllowed bool.
-func (list *Serverlist) removeServer(id int) error {
-	if len(list.servers)-1 < id {
-		return (errors.New("Server deletion: id does not exist"))
+func (list *Serverlist) removeServer(name string) error {
+	if _, ok := list.servers[name]; !ok {
+		return (errors.New("Server deletion: name does not exist"))
 	}
 	//Check if there are still open sessions
-	if len(list.servers[id].Tickets) == 0 {
-		log.Println("Server: Deleting server " + strconv.Itoa(id))
-		copy(list.servers[id:], list.servers[id+1:])
-		//list.servers[len(list.servers[id:])-1] = nil
-		list.servers = list.servers[:len(list.servers)-1]
+	if len(list.servers[name].Tickets) == 0 {
+		log.Println("Server: Deleting server " + name)
+		delete(list.servers, name)
 	} else {
-		log.Println("Server: Server " + strconv.Itoa(id) + " is marked for deletion, but occupied.")
+		log.Println("Server: Server " + name + " is marked for deletion, but occupied.")
 		return (errors.New("Server deletion: Server still occupied"))
 	}
 	return (nil)
@@ -147,17 +155,16 @@ func (list *Serverlist) removeServer(id int) error {
 func (list *Serverlist) deletionmanager() {
 	defer list.mux.Unlock()
 	list.mux.Lock()
-	for i := 0; i < len(list.servers); i++ {
-		list.servers[i].mux.Lock()
-		if !list.servers[i].UseAllowed {
-			list.servers[i].mux.Unlock() //unlock the server before it is removed.
-			err := list.removeServer(i)
-			//modify counter (that's possible in go) because otherwise we would skip items when the deletion was successful
-			if err == nil {
-				i = i - 1
-			}
+	for name := range list.servers {
+		list.servers[name].mux.Lock()
+		if !list.servers[name].UseAllowed {
+			list.servers[name].mux.Unlock() //unlock the server before it is removed.
+			//we won't check the error of removeServer anymore since the serverid was
+			//changed to string instead of int
+			//nolint:errcheck
+			list.removeServer(name)
 		} else { //needs to be with an else, because if the server was removed, we can not unlock the mux anymore
-			list.servers[i].mux.Unlock()
+			list.servers[name].mux.Unlock()
 		}
 	}
 }
@@ -166,14 +173,14 @@ func (list *Serverlist) deletionmanager() {
 // available server. It will return an error if there are no free Tickets
 // availabe in the Serverlist.
 func (list *Serverlist) addTicket() (*ticket, error) {
-	for num := range list.servers {
-		list.servers[num].mux.Lock()
-		log.Println("Ticket: Trying " + strconv.Itoa(num))
-		if list.servers[num].hasSlots() && list.servers[num].UseAllowed {
-			list.servers[num].mux.Unlock()
-			return list.servers[num].newTicket(num), nil
+	for name := range list.servers {
+		list.servers[name].mux.Lock()
+		log.Println("Ticket: Trying " + name)
+		if list.servers[name].hasSlots() && list.servers[name].UseAllowed {
+			list.servers[name].mux.Unlock()
+			return list.servers[name].newTicket(name), nil
 		}
-		list.servers[num].mux.Unlock()
+		list.servers[name].mux.Unlock()
 	}
 	return nil, errors.New("No ticket left")
 }
@@ -253,13 +260,13 @@ func (server *server) hasSlots() bool {
 
 // newTicket This function adds a new ticket to a server and returns the new ticket.
 // It is only used internally.
-func (server *server) newTicket(servernum int) *ticket {
+func (server *server) newTicket(name string) *ticket {
 	defer server.mux.Unlock()
 	server.mux.Lock()
 	token := tokenGenerator()
 	newTicket := &ticket{
 		LastUsed: time.Now(),
-		server:   servernum,
+		server:   name,
 		token:    token,
 	}
 	server.Tickets[token] = newTicket
@@ -288,18 +295,18 @@ func (ticket *ticket) update(alive chan struct{}) {
 //MainHandler This function provides the toplevel handler for the proxy requests
 func (list *Serverlist) MainHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	servernum, _ := strconv.Atoi(vars["s"])
+	servername := vars["s"]
 	log.Println("PATH:", vars["serverpath"])
-	list.callServer(w, r, servernum)
+	list.callServer(w, r, servername)
 }
 
 // callServer This function redirects client requests to the according proxy handlers.
-func (list *Serverlist) callServer(w http.ResponseWriter, r *http.Request, id int) {
+func (list *Serverlist) callServer(w http.ResponseWriter, r *http.Request, name string) {
 	alive := make(chan struct{})
 	defer close(alive)
 	list.mux.Lock()
-	if id >= 0 && id < len(list.servers) {
-		if list.servers[id].Handler != nil {
+	if _, ok := list.servers[name]; ok {
+		if list.servers[name].Handler != nil {
 			//Middleware check Ticket
 			cookie, err := r.Cookie("stoken")
 			if err == http.ErrNoCookie {
@@ -308,17 +315,17 @@ func (list *Serverlist) callServer(w http.ResponseWriter, r *http.Request, id in
 			} else {
 				//token := r.Header.Get("X-Session-Token")
 				token := cookie.Value
-				if ticket, ok := list.servers[id].Tickets[token]; ok {
+				if ticket, ok := list.servers[name].Tickets[token]; ok {
 					list.mux.Unlock()
 					ticket.mux.Lock()
 					ticket.LastUsed = time.Now()
 					log.Println("Ticket:", token+"  "+ticket.LastUsed.Format("2006-01-02 15:04:05"))
 					ticket.mux.Unlock()
 					go ticket.update(alive)
-					list.servers[id].mux.Lock()
-					ThisHandler := &list.servers[id].Handler
-					list.servers[id].mux.Unlock()
-					http.StripPrefix("/"+list.Prefix+"/"+strconv.Itoa(id)+"/", *ThisHandler).ServeHTTP(w, r)
+					list.servers[name].mux.Lock()
+					ThisHandler := &list.servers[name].Handler
+					list.servers[name].mux.Unlock()
+					http.StripPrefix("/"+list.Prefix+"/"+name+"/", *ThisHandler).ServeHTTP(w, r)
 				} else {
 					list.mux.Unlock()
 					http.Error(w, "Forbidden", http.StatusForbidden)
@@ -424,7 +431,7 @@ func (list *Serverlist) ServeWs(w http.ResponseWriter, r *http.Request) {
 	list.querrymanager()
 	go func() {
 		ticket := <-querry
-		wswrite <- "tkn#" + ticket.token + "@" + strconv.Itoa(ticket.server)
+		wswrite <- "tkn#" + ticket.token + "@" + ticket.server
 		close(running)
 	}()
 	ticketticker := time.NewTicker(10 * time.Second)
