@@ -20,7 +20,8 @@ jobs:
     name: golangci-lint
     steps:
       - uses: actions/checkout@master
-      - uses: actions-contrib/golangci-lint@v1
-        #with:
+      - uses: actions-contrib/golangci-lint@v1        
+        with:
           # golangci-lint docker release tag
-          #golangci_lint_version: # optional, default is v1.23
+          golangci_lint_version: v1.26 # optional, default is v1.23
+          args: --timeout 5m
