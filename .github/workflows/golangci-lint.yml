@@ -24,4 +24,4 @@ jobs:
         with:
           # golangci-lint docker release tag
           golangci_lint_version: v1.26 # optional, default is v1.23
-          args: --timeout 5m
+          args: --deadline 5m
