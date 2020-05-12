@@ -58,13 +58,23 @@ func New_proxy_controller(ns string) Controller {
 func New_handler_for_serverlist(list *proxyfunctions.Serverlist, maxtickets int) cache.ResourceEventHandlerFuncs {
 	addfunction := func(obj interface{}) {
 		pod := obj.(*v1.Pod)
-		log.Println("k8s: New Pod " + pod.Name)
 		if pod.Status.Phase == v1.PodRunning {
-			conf, err := PodToConfig(pod)
-			if err == nil {
-				err := list.AddServer(pod.Name, maxtickets, conf)
-				if err != nil {
-					log.Println("k8s: AddServer:  ", err)
+			var rdy = true
+			for condition := range pod.Status.Conditions {
+				if pod.Status.Conditions[condition].Type == v1.PodReady {
+					if pod.Status.Conditions[condition].Status != v1.ConditionTrue {
+						rdy = false
+					}
+				}
+			}
+			if rdy {
+				log.Println("k8s: New Pod " + pod.Name)
+				conf, err := PodToConfig(pod)
+				if err == nil {
+					err := list.AddServer(pod.Name, maxtickets, conf)
+					if err != nil {
+						log.Println("k8s: AddServer:  ", err)
+					}
 				}
 			}
 		}
@@ -96,7 +106,22 @@ func New_handler_for_serverlist(list *proxyfunctions.Serverlist, maxtickets int)
 			} else if pod_old.Status.PodIP != pod_new.Status.PodIP {
 				deletefunction(pod_old)
 				addfunction(pod_new)
-			} //I think all other changes will not affect the proxy service
+			} else {
+				for condition_old := range pod_old.Status.Conditions {
+					if pod_old.Status.Conditions[condition_old].Type == v1.PodReady {
+						for condition_new := range pod_new.Status.Conditions {
+							if pod_new.Status.Conditions[condition_new].Type == v1.PodReady {
+								if pod_old.Status.Conditions[condition_old].Status != v1.ConditionTrue && pod_new.Status.Conditions[condition_new].Status == v1.ConditionTrue {
+									addfunction(pod_new)
+								} else if pod_old.Status.Conditions[condition_old].Status == v1.ConditionTrue && pod_new.Status.Conditions[condition_new].Status != v1.ConditionTrue {
+									deletefunction(pod_new)
+								}
+							}
+						}
+					}
+				}
+				//I think all other changes will not affect the proxy service
+			}
 		},
 	})
 }
