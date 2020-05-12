@@ -49,11 +49,3 @@ func New_proxy_controller(ns string) Controller {
 		Stopper:   stopper,
 	})
 }
-
-func Add_handler_to_controller(handler *Handler, controller *Controller) {
-	controller.Informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    handler.AddFunc,
-		DeleteFunc: handler.DeleteFunc,
-		UpdateFunc: handler.UpdateFunc,
-	})
-}
