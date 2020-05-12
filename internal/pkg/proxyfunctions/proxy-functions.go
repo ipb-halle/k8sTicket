@@ -111,18 +111,19 @@ func (list *Serverlist) AddServer(name string, maxtickets int, Config Config) er
 			Tickets:    make(map[string]*ticket),
 		}
 	} else {
+		list.mux.Unlock()
 		return (errors.New("Server with the name " + name + "already exists"))
 	}
 	list.mux.Unlock()
 	list.querrymanager()
-	//not sure which kind of errors could happen, let's see in the future
-	return nil //id can change when a server is deleted!
+	return nil
 }
 
 // SetServerDeletion This function marks a server to be deleted.
 func (list *Serverlist) SetServerDeletion(name string) error {
 	list.mux.Lock()
 	if _, ok := list.servers[name]; !ok {
+		list.mux.Unlock()
 		return (errors.New("Server deletion: name does not exist"))
 	}
 	list.mux.Unlock()
@@ -139,7 +140,7 @@ func (list *Serverlist) SetServerDeletion(name string) error {
 // UseAllowed bool.
 func (list *Serverlist) removeServer(name string) error {
 	if _, ok := list.servers[name]; !ok {
-		return (errors.New("Server deletion: name does not exist"))
+		return (errors.New("Server deletion: " + name + " does not exist"))
 	}
 	//Check if there are still open sessions
 	if len(list.servers[name].Tickets) == 0 {
