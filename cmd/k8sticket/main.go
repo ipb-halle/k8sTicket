@@ -26,7 +26,6 @@ import (
 	"github.com/culpinnis/k8sTicket/internal/pkg/k8sfunctions"
 	"github.com/culpinnis/k8sTicket/internal/pkg/proxyfunctions"
 	"github.com/gorilla/mux"
-	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -44,9 +43,8 @@ import (
 func main() {
 	//http testing
 	r := mux.NewRouter()
-	list := new(proxyfunctions.Serverlist)
 	var prefix = "test"
-	list.Prefix = prefix
+	list := proxyfunctions.NewServerlist(prefix)
 
 	// creates the in-cluster config
 	config, err := rest.InClusterConfig()
@@ -64,26 +62,8 @@ func main() {
 	mycontroller := k8sfunctions.New_proxy_controller(myns)
 	defer close(mycontroller.Stopper)
 	defer runtime.HandleCrash()
-	myhandler := k8sfunctions.Handler{
-		AddFunc: func(obj interface{}) {
-			pod := obj.(*v1.Pod)
-			fmt.Println("New Pod")
-			fmt.Println(pod)
-		},
-		DeleteFunc: func(obj interface{}) {
-			pod := obj.(*v1.Pod)
-			fmt.Println("Delete Pod")
-			fmt.Println(pod)
-		},
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			pod_old := oldObj.(*v1.Pod)
-			pod_new := newObj.(*v1.Pod)
-			fmt.Println("Modified Pod")
-			fmt.Println(pod_old)
-			fmt.Println(pod_new)
-		},
-	}
-	k8sfunctions.Add_handler_to_controller(&myhandler, &mycontroller)
+	myhandler := k8sfunctions.New_handler_for_serverlist(list, 1)
+	mycontroller.Informer.AddEventHandler(myhandler)
 	go mycontroller.Informer.Run(mycontroller.Stopper)
 	fmt.Printf("********\nI am running in %s\n********\n", myns)
 	// get pods in all the namespaces by omitting namespace
@@ -93,25 +73,26 @@ func main() {
 		panic(err.Error())
 	}
 	fmt.Printf("\nThere are %d pods in the namespace\n", len(pods.Items))
-	for _, pod := range pods.Items {
-		fmt.Printf("Found Pod %s, IP: %s", pod.GetName(), pod.Status.PodIP)
-		fmt.Print("\nFound Labels\n")
-		for label, value := range pod.GetLabels() {
-			fmt.Printf("########%s : %s\n", label, value)
-		}
-		fmt.Print("\nFound Annotations\n")
-		for annotation, value := range pod.GetAnnotations() {
-			fmt.Printf("########%s : %s\n", annotation, value)
-		}
-		fmt.Print("\n\n")
-		//testing part
-		serverconfig, err := k8sfunctions.PodToConfig(pod)
-		if err == nil {
-			if _, err := list.AddServer(1, serverconfig); err != nil {
-				log.Println("Error Occured: ", err)
+	/*
+		for _, pod := range pods.Items {
+			fmt.Printf("Found Pod %s, IP: %s", pod.GetName(), pod.Status.PodIP)
+			fmt.Print("\nFound Labels\n")
+			for label, value := range pod.GetLabels() {
+				fmt.Printf("########%s : %s\n", label, value)
 			}
-		}
-	}
+			fmt.Print("\nFound Annotations\n")
+			for annotation, value := range pod.GetAnnotations() {
+				fmt.Printf("########%s : %s\n", annotation, value)
+			}
+			fmt.Print("\n\n")
+			//testing part
+			serverconfig, err := k8sfunctions.PodToConfig(pod)
+			if err == nil {
+				if _, err := list.AddServer(1, serverconfig); err != nil {
+					log.Println("Error Occured: ", err)
+				}
+			}
+		} */
 	go list.TicketWatchdog()
 	r.HandleFunc("/"+list.Prefix+"/{s}/{serverpath:.*}", list.MainHandler)
 	r.HandleFunc("/"+list.Prefix, list.ServeHome)
