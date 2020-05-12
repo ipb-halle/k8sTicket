@@ -2,7 +2,6 @@ package k8sfunctions
 
 import (
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/culpinnis/k8sTicket/internal/pkg/proxyfunctions"
 	"k8s.io/api/core/v1"
-	"k8s.io/client-go/tools/cache"
 	//"k8s.io/apimachinery/pkg/api/errors"
 	//
 	// Uncomment to load all auth plugins
@@ -28,52 +26,6 @@ const (
 	default_port = 80
 	default_path = "/"
 )
-
-func New_handler_for_serverlist(list *proxyfunctions.Serverlist, maxtickets int) cache.ResourceEventHandlerFuncs {
-	addfunction := func(obj interface{}) {
-		pod := obj.(*v1.Pod)
-		log.Println("k8s: New Pod " + pod.Name)
-		if pod.Status.Phase == v1.PodRunning {
-			conf, err := PodToConfig(pod)
-			if err == nil {
-				err := list.AddServer(pod.Name, maxtickets, conf)
-				if err != nil {
-					log.Println("k8s: AddServer:  ", err)
-				}
-			}
-		}
-	}
-	deletefunction := func(obj interface{}) {
-		pod := obj.(*v1.Pod)
-		fmt.Println("k8s: Delete Pod " + pod.Name)
-		err := list.SetServerDeletion(pod.Name)
-		if err != nil {
-			log.Println("k8s: SetServerDeletion:  ", err)
-		}
-	}
-	return (cache.ResourceEventHandlerFuncs{
-		AddFunc:    addfunction,
-		DeleteFunc: deletefunction,
-		UpdateFunc: func(oldObj, newObj interface{}) {
-			pod_old := oldObj.(*v1.Pod)
-			pod_new := newObj.(*v1.Pod)
-			//We have to check different cases:
-			//A server was not ready and can be used now
-			//A server was ready but is not ready anymore
-			//A server was changed (e.g. IP or other changes)
-			if pod_old.Status.Phase != v1.PodRunning && pod_new.Status.Phase == v1.PodRunning {
-				//the pod status was changed to PodRunning
-				addfunction(pod_new)
-			} else if pod_old.Status.Phase == v1.PodRunning && pod_new.Status.Phase != v1.PodRunning {
-				//the pod was changed from PodRunning to sth else
-				deletefunction(pod_new)
-			} else if pod_old.Status.PodIP != pod_new.Status.PodIP {
-				deletefunction(pod_old)
-				addfunction(pod_new)
-			} //I think all other changes will not affect the proxy service
-		},
-	})
-}
 
 // Namespace This function returns the namespace of the running pod
 func Namespace() string {
