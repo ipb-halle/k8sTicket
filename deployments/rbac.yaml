@@ -24,7 +24,7 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - podtemplates
+  - deployments
   verbs:
   - get
   - watch
