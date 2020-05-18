@@ -37,7 +37,7 @@ func New_Proxy_for_deployment(clienset *kubernetes.Clientset, prefix string, ns 
 	proxy.Serverlist = proxyfunctions.NewServerlist(prefix)
 	proxy.Namespace = ns
 	proxy.Port = port
-	proxy.Pod_controller = New_pod_controller(clienset, ns)
+	proxy.Pod_controller = New_pod_controller(clienset, ns, prefix)
 	proxy.Pod_controller.Informer.AddEventHandler(New_pod_handler_for_serverlist(proxy.Serverlist, maxTickets))
 	proxy.Clientset = clienset
 	proxy.PodSpec = podspec
@@ -82,12 +82,12 @@ type Controller struct {
 
 // New_pod_controller This function makes a new controller for our proxy
 // with a InClusterConfig and a given namespace to watch.
-func New_pod_controller(clientset *kubernetes.Clientset, ns string) *Controller {
+func New_pod_controller(clientset *kubernetes.Clientset, ns string, app string) *Controller {
 	factory := informers.NewSharedInformerFactoryWithOptions(clientset,
 		0,
 		informers.WithNamespace(ns),
 		informers.WithTweakListOptions(internalinterfaces.TweakListOptionsFunc(func(options *metav1.ListOptions) {
-			options.LabelSelector = "k8sTicket=true"
+			options.LabelSelector = "ipb-halle.de/k8sticket.deployment.app=" + app
 		})))
 	informer := factory.Core().V1().Pods().Informer()
 	stopper := make(chan struct{})
@@ -216,10 +216,10 @@ func New_deployment_handler_for_k8sconfig(clientset *kubernetes.Clientset, ns st
 				port = deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.port"]
 			}
 			var prefix string
-			if _, ok := deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.prefix"]; !ok {
+			if _, ok := deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.app"]; !ok {
 				prefix = deployment.Name
 			} else {
-				prefix = deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.prefix"]
+				prefix = deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.app"]
 			}
 			var maxTickets int
 			if _, ok := deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxTickets"]; !ok {
@@ -233,6 +233,10 @@ func New_deployment_handler_for_k8sconfig(clientset *kubernetes.Clientset, ns st
 					maxTickets, _ = strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxTickets"])
 				}
 			}
+			log.Println("k8s: Adding deployment " + deployment.Name + " parameters: ")
+			log.Println("k8s: Port: " + port)
+			log.Println("k8s: app: " + prefix)
+			log.Println("k8s: maxTickets: " + strconv.Itoa(maxTickets))
 			proxies[deployment.Name] = New_Proxy_for_deployment(clientset, prefix, ns, port, maxTickets, deployment.Spec.Template)
 			go proxies[deployment.Name].Start()
 		} else {
@@ -251,16 +255,24 @@ func New_deployment_handler_for_k8sconfig(clientset *kubernetes.Clientset, ns st
 		}
 		fmt.Println("Pod created successfully...")*/
 	}
+	deletionfunction := func(obj interface{}) {
+		deployment := obj.(*appsv1.Deployment)
+		log.Println("k8s: Deleting deployment" + deployment.Name)
+		if _, ok := proxies[deployment.Name]; !ok {
+			log.Println("k8s: New_deployment_handler_for_k8sconfig: Deployment " + deployment.Name + " is not known!")
+		} else {
+			proxies[deployment.Name].Stop()
+		}
+	}
 	return cache.ResourceEventHandlerFuncs{
-		AddFunc: addfunction,
-		DeleteFunc: func(obj interface{}) {
-			deployment := obj.(*appsv1.Deployment)
-			log.Println("k8s: Deleting deployment" + deployment.Name)
-			if _, ok := proxies[deployment.Name]; !ok {
-				log.Println("k8s: New_deployment_handler_for_k8sconfig: Deployment " + deployment.Name + " is not known!")
-			} else {
-				proxies[deployment.Name].Stop()
-			}
+		AddFunc:    addfunction,
+		DeleteFunc: deletionfunction,
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			//mayne this should be smarter to avoid necessary reconfigurations
+			deployment_old := oldObj.(*appsv1.Deployment)
+			deployment_new := newObj.(*appsv1.Deployment)
+			proxies[deployment_old.Name].Stop()
+			go proxies[deployment_new.Name].Start()
 		},
 	}
 }
