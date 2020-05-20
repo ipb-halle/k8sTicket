@@ -60,6 +60,7 @@ type server struct {
 	Handler    http.Handler
 	UseAllowed bool
 	mux        sync.Mutex
+	LastUsed   time.Time
 }
 
 // The Serverlist includes the servers in a slice and the asked quiers (Tqueries).
@@ -67,10 +68,11 @@ type server struct {
 // availabe, a ticket will be generated and the Tqueries will be removed from
 // the list.
 type Serverlist struct {
-	servers  map[string]*server //Use a list or map here!
-	Tqueries list.List
-	Prefix   string
-	mux      sync.Mutex
+	servers   map[string]*server //Use a list or map here!
+	Tqueries  list.List
+	Prefix    string
+	mux       sync.Mutex
+	informers []chan string //maybe use a list.List if deletion of channels gets important
 }
 
 func NewServerlist(prefix string) *Serverlist {
@@ -124,7 +126,7 @@ func (list *Serverlist) SetServerDeletion(name string) error {
 	list.mux.Lock()
 	if _, ok := list.servers[name]; !ok {
 		list.mux.Unlock()
-		return (errors.New("Server deletion: name does not exist"))
+		return (errors.New("Server deletion: " + name + "does not exist"))
 	}
 	list.mux.Unlock()
 	list.servers[name].mux.Lock()
@@ -170,6 +172,18 @@ func (list *Serverlist) deletionmanager() {
 	}
 }
 
+func (list *Serverlist) GetAvailableTickets() int {
+	out := 0
+	for name := range list.servers {
+		list.servers[name].mux.Lock()
+		if list.servers[name].UseAllowed {
+			out = out + list.servers[name].MaxTickets - len(list.servers[name].Tickets)
+		}
+		list.servers[name].mux.Unlock()
+	}
+	return out
+}
+
 // addTicket This functions adds a new ticket to the Serverlist on the first
 // available server. It will return an error if there are no free Tickets
 // availabe in the Serverlist.
@@ -184,6 +198,14 @@ func (list *Serverlist) addTicket() (*ticket, error) {
 		list.servers[name].mux.Unlock()
 	}
 	return nil, errors.New("No ticket left")
+}
+
+func (list *Serverlist) AddInformerChannel() chan string {
+	chanInformer := make(chan string, 1)
+	list.mux.Lock()
+	list.informers = append(list.informers, chanInformer)
+	list.mux.Unlock()
+	return chanInformer
 }
 
 // removeTicket This function will remove a ticket from a server in the server list.
@@ -216,6 +238,9 @@ func (list *Serverlist) TicketWatchdog() {
 					list.servers[id].Tickets[token].mux.Unlock()
 					delete(list.servers[id].Tickets, token)
 					log.Println("Ticket: Deleting ticket " + token)
+					for _, channel := range list.informers {
+						channel <- "delete ticket"
+					}
 				} else {
 					list.servers[id].Tickets[token].mux.Unlock()
 				}
@@ -246,6 +271,9 @@ func (list *Serverlist) querrymanager() {
 			channel <- t
 			close(channel)
 			list.Tqueries.Remove(ChannelElement)
+			for _, channel := range list.informers {
+				channel <- "new ticket"
+			}
 		} else {
 			log.Println(err)
 		}
@@ -305,6 +333,11 @@ func (list *Serverlist) MainHandler(w http.ResponseWriter, r *http.Request) {
 func (list *Serverlist) callServer(w http.ResponseWriter, r *http.Request, name string) {
 	alive := make(chan struct{})
 	defer close(alive)
+	defer func() {
+		for _, channel := range list.informers {
+			close(channel)
+		}
+	}()
 	list.mux.Lock()
 	if _, ok := list.servers[name]; ok {
 		if list.servers[name].Handler != nil {
@@ -452,7 +485,7 @@ func writeHello(ws *websocket.Conn, done chan struct{}, writech chan string) {
 	writech <- "msg#Welcome generating ticket!"
 }
 
-// Generates a proxxy based on the Configuration in Serverlist.servers
+// Generates a proxy based on the Configuration in Serverlist.servers
 func generateProxy(conf Config) http.Handler {
 	proxy := &httputil.ReverseProxy{Director: func(req *http.Request) {
 		originHost := conf.Host

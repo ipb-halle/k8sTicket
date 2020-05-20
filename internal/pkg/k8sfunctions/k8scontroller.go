@@ -29,9 +29,11 @@ type Proxy_for_deployment struct {
 	Port           string
 	PodSpec        v1.PodTemplateSpec
 	Stopper        chan struct{}
+	spareTickets   int
+	maxPods        int
 }
 
-func New_Proxy_for_deployment(clienset *kubernetes.Clientset, prefix string, ns string, port string, maxTickets int, podspec v1.PodTemplateSpec) *Proxy_for_deployment {
+func New_Proxy_for_deployment(clienset *kubernetes.Clientset, prefix string, ns string, port string, maxTickets int, spareTickets int, maxPods int, podspec v1.PodTemplateSpec) *Proxy_for_deployment {
 	proxy := Proxy_for_deployment{}
 	router := gorilla.NewRouter()
 	proxy.Serverlist = proxyfunctions.NewServerlist(prefix)
@@ -44,6 +46,8 @@ func New_Proxy_for_deployment(clienset *kubernetes.Clientset, prefix string, ns 
 	proxy.Stopper = make(chan struct{})
 	proxy.Router = router
 	proxy.Server = &http.Server{Addr: ":" + port, Handler: router}
+	proxy.spareTickets = spareTickets
+	proxy.maxPods = maxPods
 	return &proxy
 }
 
@@ -233,11 +237,35 @@ func New_deployment_handler_for_k8sconfig(clientset *kubernetes.Clientset, ns st
 					maxTickets, _ = strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxTickets"])
 				}
 			}
+			var spareTickets int
+			if _, ok := deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.spareTickets"]; !ok {
+				spareTickets = 2
+			} else {
+				_, err := strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.spareTickets"])
+				if err != nil {
+					log.Println("k8s: Deployment: " + deployment.Name + "ipb-halle.de/k8sticket.deployment.spareTickets annotation malformed: " + err.Error())
+					spareTickets = 2
+				} else {
+					spareTickets, _ = strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.spareTickets"])
+				}
+			}
+			var maxPods int
+			if _, ok := deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxPods"]; !ok {
+				maxPods = 1
+			} else {
+				_, err := strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxPods"])
+				if err != nil {
+					log.Println("k8s: Deployment: " + deployment.Name + "ipb-halle.de/k8sticket.deployment.maxPods annotation malformed: " + err.Error())
+					maxPods = 1
+				} else {
+					maxPods, _ = strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxPods"])
+				}
+			}
 			log.Println("k8s: Adding deployment " + deployment.Name + " parameters: ")
 			log.Println("k8s: Port: " + port)
 			log.Println("k8s: app: " + prefix)
 			log.Println("k8s: maxTickets: " + strconv.Itoa(maxTickets))
-			proxies[deployment.Name] = New_Proxy_for_deployment(clientset, prefix, ns, port, maxTickets, deployment.Spec.Template)
+			proxies[deployment.Name] = New_Proxy_for_deployment(clientset, prefix, ns, port, maxTickets, spareTickets, maxPods, deployment.Spec.Template)
 			go proxies[deployment.Name].Start()
 		} else {
 			log.Println("k8s: New_deployment_handler_for_k8sconfig: Deployment " + deployment.Name + " already exists!")
@@ -268,11 +296,51 @@ func New_deployment_handler_for_k8sconfig(clientset *kubernetes.Clientset, ns st
 		AddFunc:    addfunction,
 		DeleteFunc: deletionfunction,
 		UpdateFunc: func(oldObj, newObj interface{}) {
-			//mayne this should be smarter to avoid necessary reconfigurations
+			ok := true
 			deployment_old := oldObj.(*appsv1.Deployment)
 			deployment_new := newObj.(*appsv1.Deployment)
-			proxies[deployment_old.Name].Stop()
-			go proxies[deployment_new.Name].Start()
+			if deployment_old.GetAnnotations()["ipb-halle.de/k8sticket.deployment.port"] != deployment_new.GetAnnotations()["ipb-halle.de/k8sticket.deployment.port"] {
+				ok = false
+			}
+			if deployment_old.GetAnnotations()["ipb-halle.de/k8sticket.deployment.app"] != deployment_new.GetAnnotations()["ipb-halle.de/k8sticket.deployment.app"] {
+				ok = false
+			}
+			if deployment_old.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxTickets"] != deployment_new.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxTickets"] {
+				ok = false
+			}
+			if !ok {
+				proxies[deployment_old.Name].Stop()
+				go proxies[deployment_new.Name].Start()
+			}
+			//other changes are handled by k8s itself
+			//e.g. change of pod template
 		},
+	}
+}
+
+func (proxy *Proxy_for_deployment) podScaler(informer chan string) {
+	for msg := range informer {
+		if msg == "new ticket" {
+			//check ressources
+			if proxy.Serverlist.GetAvailableTickets() < proxy.spareTickets {
+				pods, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).List(metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8s.Ticket.scaled=true"})
+				if err != nil {
+					panic(err.Error())
+				}
+				if len(pods.Items) < proxy.maxPods {
+					mypod := v1.Pod{
+						ObjectMeta: proxy.PodSpec.ObjectMeta,
+						Spec:       proxy.PodSpec.Spec,
+					}
+					mypod.ObjectMeta.Labels["ipb-halle.de/k8sTicket.scaled"] = "true"
+					mypod.GenerateName = proxy.Serverlist.Prefix + "-k8sTicket-autoscaled-"
+					_, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).Create(&mypod)
+					if err != nil {
+						panic(err)
+					}
+					log.Println("k8s: podScaler: Pod created successfully")
+				}
+			}
+		}
 	}
 }
