@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/culpinnis/k8sTicket/internal/pkg/proxyfunctions"
 	gorilla "github.com/gorilla/mux"
@@ -56,6 +58,8 @@ func (proxy *Proxy_for_deployment) Start() {
 	//defer runtime.HandleCrash()
 	go proxy.Pod_controller.Informer.Run(proxy.Pod_controller.Stopper)
 	go proxy.Serverlist.TicketWatchdog()
+	go proxy.podScaler(proxy.Serverlist.AddInformerChannel())
+	go proxy.podWatchdog()
 	proxy.Router.HandleFunc("/"+proxy.Serverlist.Prefix+"/{s}/{serverpath:.*}", proxy.Serverlist.MainHandler)
 	proxy.Router.HandleFunc("/"+proxy.Serverlist.Prefix, proxy.Serverlist.ServeHome)
 	proxy.Router.HandleFunc("/"+proxy.Serverlist.Prefix+"/", proxy.Serverlist.ServeHome)
@@ -74,6 +78,9 @@ func (proxy *Proxy_for_deployment) Stop() {
 		close(proxy.Stopper)
 	}()
 	<-proxy.Stopper
+	for _, channel := range proxy.Serverlist.Informers {
+		close(channel)
+	}
 }
 
 // Controller This struct includes a components of the Controller
@@ -267,6 +274,7 @@ func New_deployment_handler_for_k8sconfig(clientset *kubernetes.Clientset, ns st
 			log.Println("k8s: maxTickets: " + strconv.Itoa(maxTickets))
 			proxies[deployment.Name] = New_Proxy_for_deployment(clientset, prefix, ns, port, maxTickets, spareTickets, maxPods, deployment.Spec.Template)
 			go proxies[deployment.Name].Start()
+			//go proxies[deployment.Name].podWatchdog()
 		} else {
 			log.Println("k8s: New_deployment_handler_for_k8sconfig: Deployment " + deployment.Name + " already exists!")
 		}
@@ -290,6 +298,7 @@ func New_deployment_handler_for_k8sconfig(clientset *kubernetes.Clientset, ns st
 			log.Println("k8s: New_deployment_handler_for_k8sconfig: Deployment " + deployment.Name + " is not known!")
 		} else {
 			proxies[deployment.Name].Stop()
+			//Deletion?
 		}
 	}
 	return cache.ResourceEventHandlerFuncs{
@@ -323,7 +332,7 @@ func (proxy *Proxy_for_deployment) podScaler(informer chan string) {
 		if msg == "new ticket" {
 			//check ressources
 			if proxy.Serverlist.GetAvailableTickets() < proxy.spareTickets {
-				pods, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).List(metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8s.Ticket.scaled=true"})
+				pods, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).List(metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
 				if err != nil {
 					panic(err.Error())
 				}
@@ -333,12 +342,54 @@ func (proxy *Proxy_for_deployment) podScaler(informer chan string) {
 						Spec:       proxy.PodSpec.Spec,
 					}
 					mypod.ObjectMeta.Labels["ipb-halle.de/k8sTicket.scaled"] = "true"
-					mypod.GenerateName = proxy.Serverlist.Prefix + "-k8sTicket-autoscaled-"
+					mypod.GenerateName = strings.ToLower(proxy.Serverlist.Prefix + "-k8sticket-autoscaled-")
 					_, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).Create(&mypod)
 					if err != nil {
 						panic(err)
 					}
 					log.Println("k8s: podScaler: Pod created successfully")
+				}
+			}
+		}
+	}
+}
+
+func (proxy *Proxy_for_deployment) podWatchdog() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	//defer list.mux.Unlock()
+	for {
+		<-ticker.C
+		log.Println("k8s: podWatchdog: Start cleaning")
+		pods, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).List(metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
+		if err != nil {
+			panic(err.Error()) //Make a better error message!
+		}
+		if proxy.Serverlist.GetAvailableTickets() > proxy.spareTickets {
+			for _, pod := range pods.Items {
+				if _, ok := proxy.Serverlist.Servers[pod.Name]; ok {
+					log.Println("k8s: podWatchdog: Checking "+pod.Name+" with ", len(proxy.Serverlist.Servers[pod.Name].Tickets), " Tickets")
+					if len(proxy.Serverlist.Servers[pod.Name].Tickets) == 0 {
+						if time.Since(proxy.Serverlist.Servers[pod.Name].LastUsed).Milliseconds() > int64(30)*time.Second.Milliseconds() { //Change me to annotation
+							if (proxy.Serverlist.GetAvailableTickets() - proxy.Serverlist.Servers[pod.Name].MaxTickets) >= proxy.spareTickets {
+								//err := proxy.Serverlist.SetServerDeletion(pod.Name)
+								//if err != nil {
+								//log.Println("k8s: SetServerDeletion:  ", err)
+								//} else {
+								err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).Delete(pod.Name, &metav1.DeleteOptions{})
+								if err != nil {
+									log.Println("k8s: podWatchdog: Error deleting "+pod.Name+": ", err)
+									//}
+								}
+							}
+						}
+					}
+				} else {
+					log.Println("k8s: podWatchdog: There is an unused pod which is not in the serverlist " + pod.Name)
+					err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).Delete(pod.Name, &metav1.DeleteOptions{})
+					if err != nil {
+						log.Println("k8s: podWatchdog: Error deleting "+pod.Name+": ", err)
+					}
 				}
 			}
 		}

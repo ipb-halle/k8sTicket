@@ -45,7 +45,7 @@ type Config struct {
 // It will be updated everytime it is used.
 type ticket struct {
 	LastUsed time.Time
-	server   string
+	server   *server
 	token    string
 	mux      sync.Mutex
 }
@@ -61,6 +61,7 @@ type server struct {
 	UseAllowed bool
 	mux        sync.Mutex
 	LastUsed   time.Time
+	Name       string
 }
 
 // The Serverlist includes the servers in a slice and the asked quiers (Tqueries).
@@ -68,16 +69,16 @@ type server struct {
 // availabe, a ticket will be generated and the Tqueries will be removed from
 // the list.
 type Serverlist struct {
-	servers   map[string]*server //Use a list or map here!
+	Servers   map[string]*server
 	Tqueries  list.List
 	Prefix    string
 	mux       sync.Mutex
-	informers []chan string //maybe use a list.List if deletion of channels gets important
+	Informers []chan string //maybe use a list.List if deletion of channels gets important
 }
 
 func NewServerlist(prefix string) *Serverlist {
 	list := new(Serverlist)
-	list.servers = make(map[string]*server)
+	list.Servers = make(map[string]*server)
 	list.Prefix = prefix
 	return (list)
 }
@@ -104,13 +105,14 @@ func (list *Serverlist) AddServer(name string, maxtickets int, Config Config) er
 	list.deletionmanager() //first check if servers should be deleted
 	list.mux.Lock()
 	log.Println("Server: Adding Server " + name + " " + Config.Host + Config.Path)
-	if _, ok := list.servers[name]; !ok {
-		list.servers[name] = &server{
+	if _, ok := list.Servers[name]; !ok {
+		list.Servers[name] = &server{
 			MaxTickets: maxtickets,
 			Config:     Config,
 			Handler:    generateProxy(Config),
 			UseAllowed: true,
 			Tickets:    make(map[string]*ticket),
+			Name:       name,
 		}
 	} else {
 		list.mux.Unlock()
@@ -124,14 +126,14 @@ func (list *Serverlist) AddServer(name string, maxtickets int, Config Config) er
 // SetServerDeletion This function marks a server to be deleted.
 func (list *Serverlist) SetServerDeletion(name string) error {
 	list.mux.Lock()
-	if _, ok := list.servers[name]; !ok {
+	if _, ok := list.Servers[name]; !ok {
 		list.mux.Unlock()
 		return (errors.New("Server deletion: " + name + "does not exist"))
 	}
 	list.mux.Unlock()
-	list.servers[name].mux.Lock()
-	list.servers[name].UseAllowed = false
-	list.servers[name].mux.Unlock()
+	list.Servers[name].mux.Lock()
+	list.Servers[name].UseAllowed = false
+	list.Servers[name].mux.Unlock()
 	list.deletionmanager()
 	return nil
 }
@@ -141,13 +143,13 @@ func (list *Serverlist) SetServerDeletion(name string) error {
 // If the server is still busy, it will be marked for deletion by the
 // UseAllowed bool.
 func (list *Serverlist) removeServer(name string) error {
-	if _, ok := list.servers[name]; !ok {
+	if _, ok := list.Servers[name]; !ok {
 		return (errors.New("Server deletion: " + name + " does not exist"))
 	}
 	//Check if there are still open sessions
-	if len(list.servers[name].Tickets) == 0 {
+	if len(list.Servers[name].Tickets) == 0 {
 		log.Println("Server: Deleting server " + name)
-		delete(list.servers, name)
+		delete(list.Servers, name)
 	} else {
 		log.Println("Server: Server " + name + " is marked for deletion, but occupied.")
 		return (errors.New("Server deletion: Server still occupied"))
@@ -158,28 +160,28 @@ func (list *Serverlist) removeServer(name string) error {
 func (list *Serverlist) deletionmanager() {
 	defer list.mux.Unlock()
 	list.mux.Lock()
-	for name := range list.servers {
-		list.servers[name].mux.Lock()
-		if !list.servers[name].UseAllowed {
-			list.servers[name].mux.Unlock() //unlock the server before it is removed.
+	for name := range list.Servers {
+		list.Servers[name].mux.Lock()
+		if !list.Servers[name].UseAllowed {
+			list.Servers[name].mux.Unlock() //unlock the server before it is removed.
 			//we won't check the error of removeServer anymore since the serverid was
 			//changed to string instead of int
 			//nolint:errcheck
 			list.removeServer(name)
 		} else { //needs to be with an else, because if the server was removed, we can not unlock the mux anymore
-			list.servers[name].mux.Unlock()
+			list.Servers[name].mux.Unlock()
 		}
 	}
 }
 
 func (list *Serverlist) GetAvailableTickets() int {
 	out := 0
-	for name := range list.servers {
-		list.servers[name].mux.Lock()
-		if list.servers[name].UseAllowed {
-			out = out + list.servers[name].MaxTickets - len(list.servers[name].Tickets)
+	for name := range list.Servers {
+		list.Servers[name].mux.Lock()
+		if list.Servers[name].UseAllowed {
+			out = out + list.Servers[name].MaxTickets - len(list.Servers[name].Tickets)
 		}
-		list.servers[name].mux.Unlock()
+		list.Servers[name].mux.Unlock()
 	}
 	return out
 }
@@ -188,14 +190,14 @@ func (list *Serverlist) GetAvailableTickets() int {
 // available server. It will return an error if there are no free Tickets
 // availabe in the Serverlist.
 func (list *Serverlist) addTicket() (*ticket, error) {
-	for name := range list.servers {
-		list.servers[name].mux.Lock()
+	for name := range list.Servers {
+		list.Servers[name].mux.Lock()
 		log.Println("Ticket: Trying " + name)
-		if list.servers[name].hasSlots() && list.servers[name].UseAllowed {
-			list.servers[name].mux.Unlock()
-			return list.servers[name].newTicket(name), nil
+		if list.Servers[name].hasSlots() && list.Servers[name].UseAllowed {
+			list.Servers[name].mux.Unlock()
+			return list.Servers[name].newTicket(), nil
 		}
-		list.servers[name].mux.Unlock()
+		list.Servers[name].mux.Unlock()
 	}
 	return nil, errors.New("No ticket left")
 }
@@ -203,16 +205,16 @@ func (list *Serverlist) addTicket() (*ticket, error) {
 func (list *Serverlist) AddInformerChannel() chan string {
 	chanInformer := make(chan string, 1)
 	list.mux.Lock()
-	list.informers = append(list.informers, chanInformer)
+	list.Informers = append(list.Informers, chanInformer)
 	list.mux.Unlock()
 	return chanInformer
 }
 
 // removeTicket This function will remove a ticket from a server in the server list.
 // func (list *Serverlist) removeTicket(token string) error {
-// 	for id := range list.servers {
-// 		if _, ok := list.servers[id].Tickets[token]; ok {
-// 			delete(list.servers[id].Tickets, token)
+// 	for id := range list.Servers {
+// 		if _, ok := list.Servers[id].Tickets[token]; ok {
+// 			delete(list.Servers[id].Tickets, token)
 // 			list.deletionmanager()
 // 			list.querrymanager()
 // 		} else {
@@ -231,18 +233,18 @@ func (list *Serverlist) TicketWatchdog() {
 	for {
 		<-ticker.C
 		list.mux.Lock()
-		for id := range list.servers {
-			for token := range list.servers[id].Tickets {
-				list.servers[id].Tickets[token].mux.Lock()
-				if time.Since(list.servers[id].Tickets[token].LastUsed).Milliseconds() > int64(3)*time.Second.Milliseconds() {
-					list.servers[id].Tickets[token].mux.Unlock()
-					delete(list.servers[id].Tickets, token)
+		for id := range list.Servers {
+			for token := range list.Servers[id].Tickets {
+				list.Servers[id].Tickets[token].mux.Lock()
+				if time.Since(list.Servers[id].Tickets[token].LastUsed).Milliseconds() > ticketTime.Milliseconds() {
+					list.Servers[id].Tickets[token].mux.Unlock()
+					delete(list.Servers[id].Tickets, token)
 					log.Println("Ticket: Deleting ticket " + token)
-					for _, channel := range list.informers {
+					for _, channel := range list.Informers {
 						channel <- "delete ticket"
 					}
 				} else {
-					list.servers[id].Tickets[token].mux.Unlock()
+					list.Servers[id].Tickets[token].mux.Unlock()
 				}
 			}
 		}
@@ -271,11 +273,11 @@ func (list *Serverlist) querrymanager() {
 			channel <- t
 			close(channel)
 			list.Tqueries.Remove(ChannelElement)
-			for _, channel := range list.informers {
-				channel <- "new ticket"
+			for _, chann := range list.Informers {
+				chann <- "new ticket"
 			}
 		} else {
-			log.Println(err)
+			log.Println("Serverlist: querrymanager: ", err)
 		}
 	}
 }
@@ -289,13 +291,13 @@ func (server *server) hasSlots() bool {
 
 // newTicket This function adds a new ticket to a server and returns the new ticket.
 // It is only used internally.
-func (server *server) newTicket(name string) *ticket {
+func (server *server) newTicket() *ticket {
 	defer server.mux.Unlock()
 	server.mux.Lock()
 	token := tokenGenerator()
 	newTicket := &ticket{
 		LastUsed: time.Now(),
-		server:   name,
+		server:   server,
 		token:    token,
 	}
 	server.Tickets[token] = newTicket
@@ -310,7 +312,11 @@ func (ticket *ticket) update(alive chan struct{}) {
 		select {
 		case <-ticker.C:
 			ticket.mux.Lock()
-			ticket.LastUsed = time.Now()
+			curtime := time.Now()
+			ticket.LastUsed = curtime
+			ticket.server.mux.Lock()
+			ticket.server.LastUsed = curtime
+			ticket.server.mux.Unlock()
 			log.Println("Ticket: refreshing: ", ticket.token+"  "+ticket.LastUsed.Format("2006-01-02 15:04:05"))
 			ticket.mux.Unlock()
 		case <-alive:
@@ -333,14 +339,9 @@ func (list *Serverlist) MainHandler(w http.ResponseWriter, r *http.Request) {
 func (list *Serverlist) callServer(w http.ResponseWriter, r *http.Request, name string) {
 	alive := make(chan struct{})
 	defer close(alive)
-	defer func() {
-		for _, channel := range list.informers {
-			close(channel)
-		}
-	}()
 	list.mux.Lock()
-	if _, ok := list.servers[name]; ok {
-		if list.servers[name].Handler != nil {
+	if _, ok := list.Servers[name]; ok {
+		if list.Servers[name].Handler != nil {
 			//Middleware check Ticket
 			cookie, err := r.Cookie("stoken")
 			if err == http.ErrNoCookie {
@@ -349,16 +350,20 @@ func (list *Serverlist) callServer(w http.ResponseWriter, r *http.Request, name 
 			} else {
 				//token := r.Header.Get("X-Session-Token")
 				token := cookie.Value
-				if ticket, ok := list.servers[name].Tickets[token]; ok {
+				if ticket, ok := list.Servers[name].Tickets[token]; ok {
 					list.mux.Unlock()
+					list.Servers[name].mux.Lock()
+					curtime := time.Now()
+					list.Servers[name].LastUsed = curtime
+					list.Servers[name].mux.Unlock()
 					ticket.mux.Lock()
-					ticket.LastUsed = time.Now()
+					ticket.LastUsed = curtime
 					log.Println("Ticket:", token+"  "+ticket.LastUsed.Format("2006-01-02 15:04:05"))
 					ticket.mux.Unlock()
 					go ticket.update(alive)
-					list.servers[name].mux.Lock()
-					ThisHandler := &list.servers[name].Handler
-					list.servers[name].mux.Unlock()
+					list.Servers[name].mux.Lock()
+					ThisHandler := &list.Servers[name].Handler
+					list.Servers[name].mux.Unlock()
 					http.StripPrefix("/"+list.Prefix+"/"+name+"/", *ThisHandler).ServeHTTP(w, r)
 				} else {
 					list.mux.Unlock()
@@ -465,7 +470,7 @@ func (list *Serverlist) ServeWs(w http.ResponseWriter, r *http.Request) {
 	list.querrymanager()
 	go func() {
 		ticket := <-querry
-		wswrite <- "tkn#" + ticket.token + "@" + ticket.server
+		wswrite <- "tkn#" + ticket.token + "@" + ticket.server.Name
 		close(running)
 	}()
 	ticketticker := time.NewTicker(10 * time.Second)
