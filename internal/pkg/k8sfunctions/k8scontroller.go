@@ -307,7 +307,7 @@ func NewDeploymentHandlerForK8sconfig(clientset *kubernetes.Clientset, ns string
 			log.Println("k8s: app: " + prefix)
 			log.Println("k8s: maxTickets: " + strconv.Itoa(maxTickets))
 			proxies[deployment.Name] = NewProxyForDeployment(clientset, prefix, ns, port, maxTickets, spareTickets, maxPods, cooldown, deployment.Spec.Template)
-			go proxies[deployment.Name].Start()
+			proxies[deployment.Name].Start()
 		} else {
 			log.Println("k8s: NewDeploymentHandlerForK8sconfig: Deployment " + deployment.Name + " already exists!")
 		}
@@ -329,6 +329,7 @@ func NewDeploymentHandlerForK8sconfig(clientset *kubernetes.Clientset, ns string
 			ok := true
 			deployment_old := oldObj.(*appsv1.Deployment)
 			deployment_new := newObj.(*appsv1.Deployment)
+			log.Println("k8s: NewDeploymentHandlerForK8sconfig: Deployment " + deployment_old.Name + " is updated!")
 			if deployment_old.Name != deployment_new.Name {
 				ok = false
 			}
@@ -339,10 +340,8 @@ func NewDeploymentHandlerForK8sconfig(clientset *kubernetes.Clientset, ns string
 				ok = false
 			}
 			if !ok { //here we have to restart the proxy
-				proxies[deployment_old.Name].Stop()
 				deletionfunction(deployment_old.Name)
 				addfunction(deployment_new.Name)
-				proxies[deployment_new.Name].Start()
 			} else { //we can modify the proxy
 				if deployment_old.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxTickets"] != deployment_new.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxTickets"] {
 					_, err := strconv.Atoi(deployment_new.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxTickets"])
@@ -405,6 +404,8 @@ func (proxy *ProxyForDeployment) podScaler(informer chan string) {
 	for msg := range informer {
 		if msg == "new ticket" {
 			//check ressources
+			proxy.mux.Lock()
+			defer proxy.mux.Unlock()
 			if proxy.Serverlist.GetAvailableTickets() < proxy.spareTickets {
 				pods, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).List(metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
 				if err != nil {
@@ -438,6 +439,8 @@ func (proxy *ProxyForDeployment) podWatchdog() {
 		select {
 		case <-ticker.C:
 			log.Println("k8s: podWatchdog: Start cleaning")
+			proxy.mux.Lock()
+			defer proxy.mux.Unlock()
 			pods, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).List(metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
 			if err != nil {
 				panic("k8s: podWatchdog: " + err.Error())
