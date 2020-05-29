@@ -405,7 +405,6 @@ func (proxy *ProxyForDeployment) podScaler(informer chan string) {
 		if msg == "new ticket" {
 			//check ressources
 			proxy.mux.Lock()
-			defer proxy.mux.Unlock()
 			if proxy.Serverlist.GetAvailableTickets() < proxy.spareTickets {
 				pods, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).List(metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
 				if err != nil {
@@ -426,6 +425,7 @@ func (proxy *ProxyForDeployment) podScaler(informer chan string) {
 				}
 			}
 		}
+		proxy.mux.Unlock()
 	}
 }
 
