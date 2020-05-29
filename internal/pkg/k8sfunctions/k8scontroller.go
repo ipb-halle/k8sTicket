@@ -104,6 +104,7 @@ func (proxy *ProxyForDeployment) Stop() {
 	for _, channel := range proxy.Serverlist.Informers {
 		close(channel)
 	}
+	close(proxy.podWatchdogStopper)
 }
 
 //NewPodController This function makes a new controller for our proxy
