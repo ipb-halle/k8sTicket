@@ -308,6 +308,20 @@ func (server *server) GetMaxTickets() int {
 	return server.maxTickets
 }
 
+//GetLastUsed Returns the LastUsed value of a server taking the servers mutex into account.
+func (server *server) GetLastUsed() time.Time {
+	server.Mux.Lock()
+	defer server.Mux.Unlock()
+	return server.LastUsed
+}
+
+//HasTickets Returns true if the server has no tickets.
+func (server *server) HasNoTickets() bool {
+	server.Mux.Lock()
+	defer server.Mux.Unlock()
+	return (len(server.Tickets) == 0)
+}
+
 // hasSlots This function checks if a server has still free slots for new tickets.
 func (server *server) hasSlots() bool {
 	return len(server.Tickets) < server.maxTickets

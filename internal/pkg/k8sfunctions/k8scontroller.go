@@ -305,7 +305,10 @@ func NewDeploymentHandlerForK8sconfig(clientset *kubernetes.Clientset, ns string
 			log.Println("k8s: Adding deployment " + deployment.Name + " parameters: ")
 			log.Println("k8s: Port: " + port)
 			log.Println("k8s: app: " + prefix)
-			log.Println("k8s: maxTickets: " + strconv.Itoa(maxTickets))
+			log.Println("k8s: MaxTickets: ", maxTickets)
+			log.Println("k8s: spareTickets: ", spareTickets)
+			log.Println("k8s: maxPods: ", maxPods)
+			log.Println("k8s: Podcooldown: ", cooldown)
 			proxies[deployment.Name] = NewProxyForDeployment(clientset, prefix, ns, port, maxTickets, spareTickets, maxPods, cooldown, deployment.Spec.Template)
 			proxies[deployment.Name].Start()
 		} else {
@@ -424,8 +427,8 @@ func (proxy *ProxyForDeployment) podScaler(informer chan string) {
 					log.Println("k8s: podScaler: Pod created successfully")
 				}
 			}
+			proxy.mux.Unlock()
 		}
-		proxy.mux.Unlock()
 	}
 }
 
@@ -439,18 +442,17 @@ func (proxy *ProxyForDeployment) podWatchdog() {
 		select {
 		case <-ticker.C:
 			log.Println("k8s: podWatchdog: Start cleaning")
-			proxy.mux.Lock()
 			pods, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).List(metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
 			if err != nil {
 				panic("k8s: podWatchdog: " + err.Error())
 			}
+			proxy.mux.Lock()
 			if proxy.Serverlist.GetAvailableTickets() > proxy.spareTickets {
 				for _, pod := range pods.Items {
 					if _, ok := proxy.Serverlist.Servers[pod.Name]; ok {
-						proxy.Serverlist.Servers[pod.Name].Mux.Lock()
 						log.Println("k8s: podWatchdog: Checking "+pod.Name+" with ", len(proxy.Serverlist.Servers[pod.Name].Tickets), " Tickets")
-						if len(proxy.Serverlist.Servers[pod.Name].Tickets) == 0 {
-							if time.Since(proxy.Serverlist.Servers[pod.Name].LastUsed).Milliseconds() > int64(proxy.cooldown)*time.Second.Milliseconds() {
+						if proxy.Serverlist.Servers[pod.Name].HasNoTickets() {
+							if time.Since(proxy.Serverlist.Servers[pod.Name].GetLastUsed()).Milliseconds() > int64(proxy.cooldown)*time.Second.Milliseconds() {
 								if (proxy.Serverlist.GetAvailableTickets() - proxy.Serverlist.Servers[pod.Name].GetMaxTickets()) >= proxy.spareTickets {
 									err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).Delete(pod.Name, &metav1.DeleteOptions{})
 									if err != nil {
@@ -459,7 +461,6 @@ func (proxy *ProxyForDeployment) podWatchdog() {
 								}
 							}
 						}
-						proxy.Serverlist.Servers[pod.Name].Mux.Unlock()
 					} else {
 						log.Println("k8s: podWatchdog: There is an unused pod which is not in the serverlist " + pod.Name)
 						err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).Delete(pod.Name, &metav1.DeleteOptions{})
