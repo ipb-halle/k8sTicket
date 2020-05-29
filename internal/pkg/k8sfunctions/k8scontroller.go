@@ -440,7 +440,6 @@ func (proxy *ProxyForDeployment) podWatchdog() {
 		case <-ticker.C:
 			log.Println("k8s: podWatchdog: Start cleaning")
 			proxy.mux.Lock()
-			defer proxy.mux.Unlock()
 			pods, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).List(metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
 			if err != nil {
 				panic("k8s: podWatchdog: " + err.Error())
@@ -470,6 +469,7 @@ func (proxy *ProxyForDeployment) podWatchdog() {
 					}
 				}
 			}
+			proxy.mux.Unlock()
 		case <-proxy.podWatchdogStopper:
 			log.Println("k8s: podWatchdog: Exiting")
 			return
