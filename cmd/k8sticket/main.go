@@ -20,9 +20,9 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	proxymap := make(map[string]*k8sfunctions.Proxy_for_deployment)
-	deploymentController := k8sfunctions.New_deployment_controller(namespace)
-	deploymentController.Informer.AddEventHandler(k8sfunctions.New_deployment_handler_for_k8sconfig(clientset, namespace, proxymap))
+	proxymap := make(map[string]*k8sfunctions.ProxyForDeployment)
+	deploymentController := k8sfunctions.NewDeploymentController(namespace)
+	deploymentController.Informer.AddEventHandler(k8sfunctions.NewDeploymentHandlerForK8sconfig(clientset, namespace, proxymap))
 	deploymentController.Informer.Run(deploymentController.Stopper)
 	runtime.Goexit()
 }
