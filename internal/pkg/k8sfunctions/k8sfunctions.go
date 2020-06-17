@@ -10,16 +10,6 @@ import (
 
 	"github.com/culpinnis/k8sTicket/internal/pkg/proxyfunctions"
 	"k8s.io/api/core/v1"
-	//"k8s.io/apimachinery/pkg/api/errors"
-	//
-	// Uncomment to load all auth plugins
-	// _ "k8s.io/client-go/plugin/pkg/client/auth"
-	//
-	// Or uncomment to load specific auth plugins
-	// _ "k8s.io/client-go/plugin/pkg/client/auth/azure"
-	// _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
-	// _ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
-	// _ "k8s.io/client-go/plugin/pkg/client/auth/openstack"
 )
 
 const (
