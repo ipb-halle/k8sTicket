@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	default_port = 80
-	default_path = "/"
+	defaultPort = 80
+	defaultPath = "/"
 )
 
 // Namespace This function returns the namespace of the running pod
@@ -40,18 +40,18 @@ func Namespace() string {
 func PodToConfig(pod *v1.Pod) (proxyfunctions.Config, error) {
 	ip := pod.Status.PodIP
 	if ip == "" {
-		return proxyfunctions.Config{}, errors.New("Pod has no vaild IP")
+		return proxyfunctions.Config{}, errors.New("pod has no vaild IP")
 	}
-	cpath := default_path
-	cport := default_port
+	cpath := defaultPath
+	cport := defaultPort
 	if path, ok := pod.GetAnnotations()["ipb-halle.de/k8sTicket.path"]; ok {
 		cpath = path
 	}
 	if port, ok := pod.GetAnnotations()["ipb-halle.de/k8sTicket.port"]; ok {
 		_, err := strconv.Atoi(port)
 		if err != nil {
-			log.Println("k8s: Annotation: ", pod.GetName(), ": ", port, ": ", err, " Default ", default_port, "will be used")
-			cport = default_port
+			log.Println("k8s: Annotation: ", pod.GetName(), ": ", port, ": ", err, " Default ", defaultPort, "will be used")
+			cport = defaultPort
 		} else {
 			cport, _ = strconv.Atoi(port)
 		}
