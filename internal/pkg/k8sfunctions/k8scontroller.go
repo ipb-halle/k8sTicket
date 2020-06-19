@@ -46,6 +46,8 @@ type ProxyForDeployment struct {
 	PodSpec            v1.PodTemplateSpec
 	Stopper            chan struct{}
 	podWatchdogStopper chan struct{}
+	podScalerStopper   chan struct{}
+	podScalerInformer  chan string
 	spareTickets       int
 	maxPods            int
 	cooldown           int
@@ -86,6 +88,8 @@ func NewProxyForDeployment(clienset *kubernetes.Clientset, prefix string, ns str
 	proxy.PodSpec = podspec
 	proxy.Stopper = make(chan struct{})
 	proxy.podWatchdogStopper = make(chan struct{})
+	proxy.podScalerInformer = proxy.Serverlist.AddInformerChannel()
+	proxy.podScalerStopper = make(chan struct{})
 	proxy.Router = router
 	proxy.Server = &http.Server{Addr: ":" + port, Handler: router}
 	proxy.spareTickets = spareTickets
@@ -102,7 +106,7 @@ func (proxy *ProxyForDeployment) Start() {
 	log.Println("k8s: ProxyForDeployment: ", proxy.Serverlist.Prefix, " starting...")
 	go proxy.PodController.Informer.Run(proxy.PodController.Stopper)
 	go proxy.Serverlist.TicketWatchdog()
-	go proxy.podScaler(proxy.Serverlist.AddInformerChannel())
+	go proxy.podScaler()
 	go proxy.podWatchdog()
 	proxy.Router.HandleFunc("/"+proxy.Serverlist.Prefix+"/{s}/{serverpath:.*}", proxy.Serverlist.MainHandler)
 	proxy.Router.HandleFunc("/"+proxy.Serverlist.Prefix, proxy.Serverlist.ServeHome)
@@ -131,6 +135,7 @@ func (proxy *ProxyForDeployment) Stop() {
 	}()
 	<-proxy.Stopper
 	close(proxy.Serverlist.Stop)
+	close(proxy.podScalerStopper)
 	log.Println("Proxy Serverlist:", proxy.Serverlist.Prefix, "closing channles for external functions ")
 	for _, channel := range proxy.Serverlist.Informers {
 		close(channel)
@@ -515,6 +520,7 @@ func NewMetaDeploymentHandlerForK8sconfig(c interface{}, ns string, proxies *Pro
 				} else {
 					proxies.Deployments[deploymentMetaNew.Name].maxPods, _ = strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxPods"])
 				}
+				proxies.Deployments[deploymentMetaNew.Name].podScalerInformer <- "update"
 				log.Println("k8s: ", deploymentMetaNew.Name, " maxPods: ", proxies.Deployments[deploymentMetaNew.Name].maxPods)
 				proxies.Deployments[deploymentMetaNew.Name].mux.Unlock()
 			}
@@ -545,31 +551,36 @@ func NewMetaDeploymentHandlerForK8sconfig(c interface{}, ns string, proxies *Pro
 }
 
 //podScaler This method creates new pods on-demand when a new ticket is created.
-func (proxy *ProxyForDeployment) podScaler(informer chan string) {
-	for msg := range informer {
-		if msg == "new ticket" {
-			//check ressources
-			proxy.mux.Lock()
-			if proxy.Serverlist.GetAvailableTickets() < proxy.spareTickets {
-				pods, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).List(metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
-				if err != nil {
-					panic(err.Error())
-				}
-				if len(pods.Items) < proxy.maxPods {
-					mypod := v1.Pod{
-						ObjectMeta: proxy.PodSpec.ObjectMeta,
-						Spec:       proxy.PodSpec.Spec,
-					}
-					mypod.ObjectMeta.Labels["ipb-halle.de/k8sTicket.scaled"] = "true"
-					mypod.GenerateName = strings.ToLower(proxy.Serverlist.Prefix + "-k8sticket-autoscaled-")
-					_, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).Create(&mypod)
+func (proxy *ProxyForDeployment) podScaler() {
+	for {
+		select {
+		case msg := <-proxy.podScalerInformer:
+			if msg == "new ticket" || msg == "update" {
+				//check ressources
+				proxy.mux.Lock()
+				if proxy.Serverlist.GetAvailableTickets() < proxy.spareTickets {
+					pods, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).List(metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
 					if err != nil {
-						panic(err)
+						panic(err.Error())
 					}
-					log.Println("k8s: podScaler: Pod created successfully")
+					if len(pods.Items) < proxy.maxPods {
+						mypod := v1.Pod{
+							ObjectMeta: proxy.PodSpec.ObjectMeta,
+							Spec:       proxy.PodSpec.Spec,
+						}
+						mypod.ObjectMeta.Labels["ipb-halle.de/k8sTicket.scaled"] = "true"
+						mypod.GenerateName = strings.ToLower(proxy.Serverlist.Prefix + "-k8sticket-autoscaled-")
+						_, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).Create(&mypod)
+						if err != nil {
+							panic(err)
+						}
+						log.Println("k8s: podScaler: Pod created successfully")
+					}
 				}
+				proxy.mux.Unlock()
 			}
-			proxy.mux.Unlock()
+		case <-proxy.podScalerStopper:
+			return
 		}
 	}
 }
