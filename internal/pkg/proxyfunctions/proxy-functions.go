@@ -84,6 +84,7 @@ type Serverlist struct {
 	Prefix    string
 	Mux       sync.Mutex
 	Informers []chan string //maybe use a list.List if deletion of channels gets important
+	Stop      chan struct{}
 }
 
 //NewServerlist Creates a new Serverlist, needs a prefix (app label).
@@ -91,6 +92,7 @@ func NewServerlist(prefix string) *Serverlist {
 	list := new(Serverlist)
 	list.Servers = make(map[string]*server)
 	list.Prefix = prefix
+	list.Stop = make(chan struct{})
 	return (list)
 }
 
@@ -212,7 +214,7 @@ func (list *Serverlist) GetAvailableTickets() int {
 
 // addTicket This functions adds a new ticket to the Serverlist on the first
 // available server. It will return an error if there are no free Tickets
-// availabe in the Serverlist.
+// available in the Serverlist.
 func (list *Serverlist) addTicket() (*ticket, error) {
 	for name := range list.Servers {
 		list.Servers[name].Mux.Lock()
@@ -223,7 +225,7 @@ func (list *Serverlist) addTicket() (*ticket, error) {
 		}
 		list.Servers[name].Mux.Unlock()
 	}
-	return nil, errors.New("No ticket left")
+	return nil, errors.New("no ticket left")
 }
 
 func (list *Serverlist) AddInformerChannel() chan string {
@@ -241,26 +243,30 @@ func (list *Serverlist) TicketWatchdog() {
 	defer ticker.Stop()
 	//defer list.Mux.Unlock()
 	for {
-		<-ticker.C
-		list.Mux.Lock()
-		for id := range list.Servers {
-			for token := range list.Servers[id].Tickets {
-				list.Servers[id].Tickets[token].Mux.Lock()
-				if time.Since(list.Servers[id].Tickets[token].LastUsed).Milliseconds() > ticketTime.Milliseconds() {
-					list.Servers[id].Tickets[token].Mux.Unlock()
-					delete(list.Servers[id].Tickets, token)
-					log.Println("Ticket: Deleting ticket " + token)
-					for _, channel := range list.Informers {
-						channel <- "delete ticket"
+		select {
+		case <-ticker.C:
+			list.Mux.Lock()
+			for id := range list.Servers {
+				for token := range list.Servers[id].Tickets {
+					list.Servers[id].Tickets[token].Mux.Lock()
+					if time.Since(list.Servers[id].Tickets[token].LastUsed).Milliseconds() > ticketTime.Milliseconds() {
+						list.Servers[id].Tickets[token].Mux.Unlock()
+						delete(list.Servers[id].Tickets, token)
+						log.Println("Ticket: Deleting ticket " + token)
+						for _, channel := range list.Informers {
+							channel <- "delete ticket"
+						}
+					} else {
+						list.Servers[id].Tickets[token].Mux.Unlock()
 					}
-				} else {
-					list.Servers[id].Tickets[token].Mux.Unlock()
 				}
 			}
+			list.Mux.Unlock()
+			list.deletionmanager()
+			list.querrymanager()
+		case <-list.Stop:
+			return
 		}
-		list.Mux.Unlock()
-		list.deletionmanager()
-		list.querrymanager()
 	}
 }
 
@@ -269,25 +275,33 @@ func (list *Serverlist) TicketWatchdog() {
 func (list *Serverlist) querrymanager() {
 	defer list.Mux.Unlock()
 	list.Mux.Lock()
-	if list.Tqueries.Len() > 0 {
-		log.Println("Queries: There are " + strconv.Itoa(list.Tqueries.Len()) + " waiting")
-		t, err := list.addTicket()
-		if err == nil {
-			ChannelElement := list.Tqueries.Front()
-			ChannelValue := ChannelElement.Value
-			channel, ok := ChannelValue.(chan *ticket)
-			if !ok {
-				log.Printf("FATAL: got data of type %T but wanted chan!", ChannelValue)
-				os.Exit(1)
+	for {
+		select {
+		case <-list.Stop:
+			return
+		default:
+			if list.Tqueries.Len() > 0 {
+				log.Println("Queries: There are " + strconv.Itoa(list.Tqueries.Len()) + " waiting")
+				t, err := list.addTicket()
+				if err == nil {
+					ChannelElement := list.Tqueries.Front()
+					ChannelValue := ChannelElement.Value
+					channel, ok := ChannelValue.(chan *ticket)
+					if !ok {
+						log.Printf("FATAL: got data of type %T but wanted chan!", ChannelValue)
+						os.Exit(1)
+					}
+					channel <- t
+					close(channel)
+					list.Tqueries.Remove(ChannelElement)
+					for _, chann := range list.Informers {
+						chann <- "new ticket"
+					}
+				} else {
+					log.Println("Serverlist: querrymanager: ", err)
+				}
 			}
-			channel <- t
-			close(channel)
-			list.Tqueries.Remove(ChannelElement)
-			for _, chann := range list.Informers {
-				chann <- "new ticket"
-			}
-		} else {
-			log.Println("Serverlist: querrymanager: ", err)
+			return
 		}
 	}
 }

@@ -14,7 +14,7 @@ func main() {
 
 	namespace := k8sfunctions.Namespace()
 
-	proxymap := make(map[string]*k8sfunctions.ProxyForDeployment)
+	proxymap := k8sfunctions.NewProxyMap()
 	deploymentController := k8sfunctions.NewDeploymentController(namespace)
 	deploymentMetaController := k8sfunctions.NewDeploymentMetaController(namespace)
 
@@ -34,7 +34,7 @@ func main() {
 	log.Println("main: DeploymentController stopped!")
 	close(deploymentMetaController.Stopper)
 	log.Println("main: DeploymentMetaController stopped!")
-	for _, proxy := range proxymap {
+	for _, proxy := range proxymap.Deployments {
 		proxy.Stop()
 	}
 	log.Println("Bye!")
