@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: goldenmutagenesisweb-deployment
-  namespace: gmweb
+  namespace: example
   labels:
      k8sTicket: "true"
   annotations:
@@ -13,9 +13,6 @@ metadata:
 spec:
   progressDeadlineSeconds: 600
   replicas: 2
-  selector:
-    matchLabels:
-      app: gmweb
   strategy:
     rollingUpdate:
       maxSurge: 25%
