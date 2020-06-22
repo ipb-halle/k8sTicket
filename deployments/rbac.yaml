@@ -35,27 +35,6 @@ rules:
   - "apps"
   resources:
   - PartialObjectMetadata
-  - namespaces
-  - chris-dev
-  verbs:
-  - list
-  - get
-  - watch
-
-
----
-
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: k8sticket-clusterrole
-  namespace: chris-dev
-rules:
-- apiGroups:
-  - ""
-  resources:
-  - namespaces
-  - chris-dev
   verbs:
   - list
   - get
@@ -75,19 +54,3 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: k8sticket-watcher
-
----
-
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-    name: k8sticket-clusterrolebinding
-    namespace: chris-dev
-roleRef:
-    apiGroup: rbac.authorization.k8s.io
-    kind: ClusterRole
-    name: cluster-admin
-subjects:
-  - kind: ServiceAccount
-    name: k8sticket-watcher
-    namespace: chris-dev
