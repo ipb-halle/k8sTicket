@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: goldenmutagenesisweb-deployment
+  namespace: gmweb
+  labels:
+     k8sTicket: "true"
+  annotations:
+     ipb-halle.de/k8sticket.deployment.app: gmweb
+     ipb-halle.de/k8sticket.deployment.maxPods: "2"
+     ipb-halle.de/k8sticket.deployment.maxTickets: "1"
+     ipb-halle.de/k8sticket.deployment.port: "9001"
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gmweb
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        ipb-halle.de/k8sticket.deployment.app: gmweb
+      annotations:
+        ipb-halle.de/k8sTicket: "true"
+        ipb-halle.de/k8sTicket.port: "3838"
+    spec:
+      containers:
+      - image: sneumann/goldenmutagenesisweb
+        imagePullPolicy: Always
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            httpHeaders:
+            - name: Host
+              value: /
+            path: /
+            port: 3838
+            scheme: HTTP
+          initialDelaySeconds: 15
+          periodSeconds: 35
+          successThreshold: 1
+          timeoutSeconds: 4
+        name: goldenmutagenesisweb-deployment
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            httpHeaders:
+            - name: Host
+              value: /
+            path: /
+            port: 3838
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 3
+          successThreshold: 2
+          timeoutSeconds: 4
+        resources: {}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities: {}
+          privileged: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: false
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30

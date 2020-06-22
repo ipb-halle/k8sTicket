@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: k8sticket-watcher
+  namespace: example
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: k8sticket-role
+  namespace: example
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - watch
+  - list
+  - create
+  - update
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - deployments
+  verbs:
+  - get
+  - watch
+  - list
+- apiGroups:
+  - "apps"
+  resources:
+  - PartialObjectMetadata
+  verbs:
+  - list
+  - get
+  - watch
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: k8sticket-rolebinding
+  namespace: example
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: k8sticket-role
+subjects:
+- kind: ServiceAccount
+  name: k8sticket-watcher
