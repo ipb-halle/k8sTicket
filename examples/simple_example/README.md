@@ -12,4 +12,4 @@ As you can see k8sTicket has all privileges on Pods, it is allowed to get, watch
 This will deploy k8sTicket in the example namespace, waiting for other Deployments.
 
 ## 03_gmweb.yaml
-This will deploy GoldenMutagenesisWeb and configure it for the with k8sTicket.
+This will deploy GoldenMutagenesisWeb and configure it for the use with k8sTicket.
