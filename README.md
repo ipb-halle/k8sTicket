@@ -7,7 +7,7 @@ A in-kubernetes load-balancing controller using a ticket-system. Its objective i
 The whole documentation and explainations are available [in this document](docs/Documentation.md).
 
 ## Examples
-Configuration examples are available [here (simple example)](examples/simple_example) and here (extended example). 
+Configuration examples are available [here (simple example)](examples/simple_example) and [here (advanced example)](examples/advanced_example). 
 
 ## Funding
 Developed by Chris Ulpinnis for Leibniz-Institute of Plant Biochemistry (IPB), funded by grant de.NBI 031L0107 Metabolite Annotation & Sharing Halle (MASH).
