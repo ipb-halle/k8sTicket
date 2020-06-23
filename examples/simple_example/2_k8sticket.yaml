@@ -13,6 +13,9 @@ spec:
       maxUnavailable: 0
     type: RollingUpdate
   template:
+    metadata:
+      labels:
+        app: k8sTicket
     spec:
       containers:
       - image: culpinnis/k8sticket
