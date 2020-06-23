@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    ipb-halle.de/k8sticket.deployment.app: metfam
+    ipb-halle.de/k8sticket.deployment.maxPods: "3"
+    ipb-halle.de/k8sticket.deployment.maxTickets: "1"
+    ipb-halle.de/k8sticket.deployment.port: "9002"
+  labels:
+    k8sTicket: "true"
+  name: metfamily
+  namespace: example
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 2
+  revisionHistoryLimit: 10
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        ipb-halle.de/k8sTicket: "true"
+        ipb-halle.de/k8sTicket.port: "3838"
+      labels:
+        ipb-halle.de/k8sticket.deployment.app: metfam
+    spec:
+      containers:
+      - image: sneumann/metfamily
+        imagePullPolicy: Always
+        name: metfamily
+        resources:
+          limits:
+            cpu: 3800m
+            memory: 15800Mi
+          requests:
+            cpu: 1900m
+            memory: 7900Mi
+        securityContext:
+          capabilities: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30

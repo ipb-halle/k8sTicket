@@ -1,0 +1,18 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: k8sticket
+  namespace: example
+spec:
+  rules:
+  - host: k8sticket.example.domain
+    http:
+      paths:
+      - backend:
+          serviceName: k8sticket-service
+          servicePort: gmweb
+        path: /gmweb
+      - backend:
+          serviceName: k8sticket-service
+          servicePort: metfam
+        path: /metfam
