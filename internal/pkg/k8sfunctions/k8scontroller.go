@@ -33,8 +33,8 @@ type ProxyMap struct {
 	Mux         sync.Mutex
 }
 
-//ProxyForDeployment This struct includes everything necessary for running
-// the ticket proxy for one deployment.
+//ProxyForDeployment This struct includes everything needed for running
+// the ticket proxy for one deployment. It is the essiential structure of k8sTicket.
 type ProxyForDeployment struct {
 	PodController      *Controller
 	Clientset          *kubernetes.Clientset
@@ -55,6 +55,8 @@ type ProxyForDeployment struct {
 }
 
 //Controller This struct includes all components of the Controller
+// It has a clientset, a Informer.SharedInformerFactory, the Informer that
+// was created by the Factory and a Channel stop the informer.
 type Controller struct {
 	Clientset interface{} //*kubernetes.Clientset
 	Factory   interface{} //informers.SharedInformerFactory
@@ -65,7 +67,7 @@ type Controller struct {
 	Stopper  chan struct{}
 }
 
-//NewProxyMap Creates a new ProxyMap with initialized Deployment map.
+//NewProxyMap Creates a new ProxyMap with initialized ProxyForDeployment map.
 func NewProxyMap() *ProxyMap {
 	p := ProxyMap{
 		Deployments: make(map[string]*ProxyForDeployment),
@@ -75,7 +77,7 @@ func NewProxyMap() *ProxyMap {
 
 //NewProxyForDeployment The main idea of the k8sTicket structure is that every
 // Deployment is one application that should be delivered with the proxy.
-// For this reason a proxy controller is created for each deployment.
+// For this reason all components are tied together in this structure.
 func NewProxyForDeployment(clienset *kubernetes.Clientset, prefix string, ns string, port string, maxTickets int, spareTickets int, maxPods int, cooldown int, podspec v1.PodTemplateSpec) *ProxyForDeployment {
 	proxy := ProxyForDeployment{}
 	router := gorilla.NewRouter()
@@ -99,7 +101,8 @@ func NewProxyForDeployment(clienset *kubernetes.Clientset, prefix string, ns str
 }
 
 //Start This method starts a proxy. That includes the http handler as well as
-// the necessary methods and functions to manage tickets.
+// the necessary methods and functions to manage tickets. Furthermore,
+// k8s informers are started to watch the events in the cluster.
 func (proxy *ProxyForDeployment) Start() {
 	//defer close(proxy.PodController.Stopper)
 	//defer runtime.HandleCrash()
@@ -120,7 +123,7 @@ func (proxy *ProxyForDeployment) Start() {
 }
 
 //Stop This method stops a proxy including the http server and all running
-// routines.
+// routines and infomers.
 func (proxy *ProxyForDeployment) Stop() {
 	close(proxy.PodController.Stopper)
 	defer runtime.HandleCrash()
@@ -144,8 +147,9 @@ func (proxy *ProxyForDeployment) Stop() {
 	close(proxy.podWatchdogStopper)
 }
 
-//NewPodController This function creates a new pod controller for our proxy
-// with a InClusterConfig and a given namespace to watch.
+//NewPodController This function creates a new Pod controller for a proxy
+// with a kubernetes.Clientset and a given namespace to watch.
+// It will inform k8sTicket about creation, deletion or updates of running Pods for the parameter app.
 func NewPodController(clientset *kubernetes.Clientset, ns string, app string) *Controller {
 	factory := informers.NewSharedInformerFactoryWithOptions(clientset,
 		1000000000,
@@ -163,8 +167,11 @@ func NewPodController(clientset *kubernetes.Clientset, ns string, app string) *C
 	})
 }
 
-// NewDeploymentController This function creates a new controller for our proxy
-// with a Namespace to watch.
+// NewDeploymentController This function creates a new Deployment controller for a proxy
+// with a hardcoded InClusterConfig and a given namespace to watch.
+// It will inform k8sTicket about creation, deletion or updates of running Deployments.
+// This controller is a major component because k8sTicket will retrive its configuration
+// from the Deployments.
 func NewDeploymentController(ns string) Controller {
 	// creates the in-cluster config
 	log.Println("New deployment controller started")
@@ -194,7 +201,9 @@ func NewDeploymentController(ns string) Controller {
 }
 
 // NewDeploymentMetaController This function creates a new controller for
-// the meta data of deployments
+// the meta data of Deployments. In that way it is a kind of extension of the
+// DeploymentController which only listens for Deployments themselves.
+// This controlller handels the updates of Annotations and Labels.
 func NewDeploymentMetaController(ns string) Controller {
 	// creates the in-cluster config
 	log.Println("New deployment meta information controller started")
@@ -226,10 +235,9 @@ func NewDeploymentMetaController(ns string) Controller {
 
 //NewPodHandlerForServerlist This function creates the PodHandler
 // for a given Serverlist. The handler will only handle this specific Serverlist.
-// It will create the servers in the Serverlist based on the running pods.
+// It will create the servers in the Serverlist based on the running Pods.
 // It will also modify them or delete them if the Pod was modified.
-// At the moment there is no use-case for more than one Serverlist, but
-// in the future this could happen.
+// This handler implements the actions of the PodController.
 func NewPodHandlerForServerlist(list *proxyfunctions.Serverlist, maxtickets int) cache.ResourceEventHandlerFuncs {
 	addfunction := func(obj interface{}) {
 		pod := obj.(*v1.Pod)
@@ -304,7 +312,8 @@ func NewPodHandlerForServerlist(list *proxyfunctions.Serverlist, maxtickets int)
 //NewDeploymentHandlerForK8sconfig This function creates a new deployment handler.
 // It will watch for deployments in k8s with the desired annotations and
 // create (delete) the corresponding proxy. It is possible to have more than one
-// deployment in a namespace, but they should have different app annotations.
+// Deployment in a namespace, but they should have different app annotations and different ports.
+// This handler implements the actions of the DeploymentController.
 func NewDeploymentHandlerForK8sconfig(c interface{}, ns string, proxies *ProxyMap) cache.ResourceEventHandlerFuncs {
 	clientset := c.(*kubernetes.Clientset)
 	addfunction := func(obj interface{}) {

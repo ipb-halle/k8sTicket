@@ -42,15 +42,15 @@ const (
 
 //Stucts for Server and Tickets
 
-//Config The Config has a Path and a Host.
+//Config This is the config of a server. It has a Path and a Host.
 type Config struct {
 	Path string
 	Host string
 }
 
-//ticket A ticket has redundant information server and token for easier access.
+//ticket A ticket has redundant information about the server and the token for easier access.
 // It will be updated everytime it is used.
-// Whenever something is modified, lock the Mux before!
+// Developers: Lock the mux before you modify an object of this struct.
 
 type ticket struct {
 	LastUsed time.Time
@@ -59,10 +59,9 @@ type ticket struct {
 	Mux      sync.Mutex
 }
 
-//server A server knows its maximal number of tickets, its Config,
-// all tickets based on their tockens and it includes the http.Handler
-// serving the proxy requests.
-// Whenever something is modified, lock the Mux before!
+//server The server defines a backend including its tickets.
+// Developers: Lock the mux before you modify an object of this struct.
+
 type server struct {
 	maxTickets int
 	Config     Config
@@ -74,7 +73,7 @@ type server struct {
 	Name       string
 }
 
-//Serverlist The Serverlist includes the servers in a slice and the asked quiers (Tqueries).
+//Serverlist The Serverlist includes the backend servers in a slice and the queries of the clients (Tqueries).
 // All new connections will lead to new Tqueries. When there are free resources
 // available, a ticket will be generated and the Tqueries will be removed from
 // the list.
@@ -96,7 +95,7 @@ func NewServerlist(prefix string) *Serverlist {
 	return (list)
 }
 
-// This function generates a token like 31f4ef3d.
+//tockenGenerator This function generates a token like 31f4ef3d.
 // It is used to identify the tickets in k8sticket.
 func tokenGenerator() string {
 	b := make([]byte, 4)
@@ -117,7 +116,7 @@ func (list *Serverlist) ChangeAllMaxTickets(newMaxTickets int) {
 	}
 }
 
-// AddServer This function adds a new server to the server list.
+// AddServer This function adds a new server to the serverlist.
 // It requieres a name, the maximal number of tickets that can be
 // handeled by this server and the Config
 func (list *Serverlist) AddServer(name string, maxtickets int, Config Config) error {
@@ -158,10 +157,10 @@ func (list *Serverlist) SetServerDeletion(name string) error {
 	return nil
 }
 
-// RemoveServer This function tries to delete a server. It will only succeed if the server
+// RemoveServer This function tries to remove a server from the serverlist. It will only succeed if the server
 // is not occupied by a ticket!
-// If the server is still busy, it will be marked for deletion by the
-// UseAllowed bool.
+// If the server is still busy, it will be marked for deletion by setting the
+// UseAllowed bool to false. It is called by deletionmanager.
 func (list *Serverlist) removeServer(name string) error {
 	if _, ok := list.Servers[name]; !ok {
 		return (errors.New("Server deletion: " + name + " does not exist"))
@@ -179,8 +178,8 @@ func (list *Serverlist) removeServer(name string) error {
 
 //deletionmanager This function tries to delete servers that are marked for
 // deletion. This is necessary because we do not want to delete a server
-// that is used. If used in k8s the pod deletion of a used server
-// will lead to a connection interuption anyway resulting in ticket deletion.
+// that is still in use.
+// This function is triggered by SetServerDeletion and calls removeServer.
 func (list *Serverlist) deletionmanager() {
 	defer list.Mux.Unlock()
 	list.Mux.Lock()
@@ -214,7 +213,7 @@ func (list *Serverlist) GetAvailableTickets() int {
 
 // addTicket This functions adds a new ticket to the Serverlist on the first
 // available server. It will return an error if there are no free Tickets
-// available in the Serverlist.
+// left in the Serverlist.
 func (list *Serverlist) addTicket() (*ticket, error) {
 	for name := range list.Servers {
 		list.Servers[name].Mux.Lock()
@@ -228,6 +227,9 @@ func (list *Serverlist) addTicket() (*ticket, error) {
 	return nil, errors.New("no ticket left")
 }
 
+//AddInformerChannel This function allows to inform external
+// functions about new and removed tickets.
+// ToDo
 func (list *Serverlist) AddInformerChannel() chan string {
 	chanInformer := make(chan string, 1)
 	list.Mux.Lock()
@@ -236,7 +238,7 @@ func (list *Serverlist) AddInformerChannel() chan string {
 	return chanInformer
 }
 
-// TicketWatchdog This function checks if tickets a still valid (updated in specified time).
+// TicketWatchdog This function checks if tickets are still valid (updated in specified time by a HTTP connection).
 // If the ticket was not updated in time, it will be removed from the server.
 func (list *Serverlist) TicketWatchdog() {
 	ticker := time.NewTicker(ticketTime)
@@ -271,7 +273,7 @@ func (list *Serverlist) TicketWatchdog() {
 }
 
 // querrymanager This function checks the Tqueries and creates a new ticket if resources are
-// available.
+// available. It is used by callServer to ask for a new Ticket.
 func (list *Serverlist) querrymanager() {
 	defer list.Mux.Unlock()
 	list.Mux.Lock()
@@ -329,20 +331,19 @@ func (server *server) GetLastUsed() time.Time {
 	return server.LastUsed
 }
 
-//HasTickets Returns true if the server has no tickets.
+//HasTickets Returns true if the server has no active Tickets.
 func (server *server) HasNoTickets() bool {
 	server.Mux.Lock()
 	defer server.Mux.Unlock()
 	return (len(server.Tickets) == 0)
 }
 
-// hasSlots This function checks if a server has still free slots for new tickets.
+// hasSlots This function checks if a server has still free slots for new Tickets.
 func (server *server) hasSlots() bool {
 	return len(server.Tickets) < server.maxTickets
 }
 
-// newTicket This function adds a new ticket to a server and returns the new ticket.
-// It is only used internally.
+// newTicket This function adds a new Ticket to a server and returns the new Ticket.
 func (server *server) newTicket() *ticket {
 	defer server.Mux.Unlock()
 	server.Mux.Lock()
@@ -356,7 +357,7 @@ func (server *server) newTicket() *ticket {
 	return (newTicket)
 }
 
-// update This functions updates a ticket as long as the chan is open.
+// update This functions updates a Ticket as long as the chan is not closed.
 func (ticket *ticket) update(alive chan struct{}) {
 	ticker := time.NewTicker(ticketTime - 10*time.Millisecond)
 	defer ticker.Stop()
@@ -380,6 +381,7 @@ func (ticket *ticket) update(alive chan struct{}) {
 //Functions for serving the webcontent
 
 //MainHandler This function provides the toplevel handler for the proxy requests
+// It uses CallServer to handle all connection details.
 func (list *Serverlist) MainHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	servername := vars["s"]
@@ -387,7 +389,8 @@ func (list *Serverlist) MainHandler(w http.ResponseWriter, r *http.Request) {
 	list.callServer(w, r, servername)
 }
 
-//callServer This function redirects client requests to the according proxy handlers.
+//callServer This function redirects client requests to the according backend.
+// It checks the cookie, checks and updates the Ticket and gets the HTTP content.
 func (list *Serverlist) callServer(w http.ResponseWriter, r *http.Request, name string) {
 	alive := make(chan struct{})
 	defer close(alive)
@@ -444,7 +447,7 @@ func (list *Serverlist) ServeHome(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "web/static/home.html")
 }
 
-//ping This is just the ws ping
+//ping This is just the Websocket ping
 func ping(ws *websocket.Conn, done chan struct{}) {
 	ticker := time.NewTicker(pingPeriod)
 	defer ticker.Stop()
@@ -464,7 +467,9 @@ func ping(ws *websocket.Conn, done chan struct{}) {
 
 var upgrader = websocket.Upgrader{}
 
-//ServeWs This handler serves the Websocket connection to acquire the cookie & ticket.
+//ServeWs This handler serves the WebSocket connection to acquire the cookie and the Ticket.
+// The delivered home page will wait until a cookie and a backend is transfered.
+// This function also handels the initial creation of Ticket by calling querrymanager.
 func (list *Serverlist) ServeWs(w http.ResponseWriter, r *http.Request) {
 	running := make(chan struct{})
 	wswrite := make(chan string)
@@ -532,11 +537,12 @@ func (list *Serverlist) ServeWs(w http.ResponseWriter, r *http.Request) {
 }
 
 //writeHello Writes a message to the frontend to welcome the user
+// Can be uses as template to send other messages to the home page.
 func writeHello(ws *websocket.Conn, done chan struct{}, writech chan string) {
 	writech <- "msg#Welcome generating ticket!"
 }
 
-//generateProxy Generates a proxy based on a given configuration.
+//generateProxy Creates a proxy based on a given configuration.
 func generateProxy(conf Config) http.Handler {
 	proxy := &httputil.ReverseProxy{Director: func(req *http.Request) {
 		originHost := conf.Host
