@@ -133,6 +133,9 @@ func (list *Serverlist) AddServer(name string, maxtickets int, Config Config) er
 			Tickets:    make(map[string]*ticket),
 			Name:       name,
 		}
+		for _, channel := range list.Informers {
+			channel <- "adding server"
+		}
 	} else {
 		list.Mux.Unlock()
 		return (errors.New("Server with the name " + name + "already exists"))
@@ -169,6 +172,9 @@ func (list *Serverlist) removeServer(name string) error {
 	if len(list.Servers[name].Tickets) == 0 {
 		log.Println("Server: Deleting server " + name)
 		delete(list.Servers, name)
+		for _, channel := range list.Informers {
+			channel <- "deleting server"
+		}
 	} else {
 		log.Println("Server: Server " + name + " is marked for deletion, but occupied.")
 		return (errors.New("server deletion: server still occupied"))
@@ -198,7 +204,7 @@ func (list *Serverlist) deletionmanager() {
 }
 
 //GetAvailableTickets This function returns the number of all available
-//tickets on all known and active servers.
+//slots on all known and active servers.
 func (list *Serverlist) GetAvailableTickets() int {
 	out := 0
 	for name := range list.Servers {
@@ -206,6 +212,18 @@ func (list *Serverlist) GetAvailableTickets() int {
 		if list.Servers[name].UseAllowed {
 			out = out + list.Servers[name].maxTickets - len(list.Servers[name].Tickets)
 		}
+		list.Servers[name].Mux.Unlock()
+	}
+	return out
+}
+
+//GetTickets This function returns the number of occupied
+//tickets on all known servers.
+func (list *Serverlist) GetTickets() int {
+	out := 0
+	for name := range list.Servers {
+		list.Servers[name].Mux.Lock()
+		out = out + len(list.Servers[name].Tickets)
 		list.Servers[name].Mux.Unlock()
 	}
 	return out
@@ -468,7 +486,7 @@ func ping(ws *websocket.Conn, done chan struct{}) {
 var upgrader = websocket.Upgrader{}
 
 //ServeWs This handler serves the WebSocket connection to acquire the cookie and the Ticket.
-// The delivered home page will wait until a cookie and a backend is transfered.
+// The delivered home page will wait until a cookie and a backend is transferred.
 // This function also handels the initial creation of Ticket by calling querrymanager.
 func (list *Serverlist) ServeWs(w http.ResponseWriter, r *http.Request) {
 	running := make(chan struct{})

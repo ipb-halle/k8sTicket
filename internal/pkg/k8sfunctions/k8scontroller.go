@@ -48,10 +48,12 @@ type ProxyForDeployment struct {
 	podWatchdogStopper chan struct{}
 	podScalerStopper   chan struct{}
 	podScalerInformer  chan string
+	metricStopper      chan struct{}
 	spareTickets       int
 	maxPods            int
 	cooldown           int
 	mux                sync.Mutex
+	metric             *PMetric
 }
 
 //Controller This struct includes all components of the Controller
@@ -78,25 +80,27 @@ func NewProxyMap() *ProxyMap {
 //NewProxyForDeployment The main idea of the k8sTicket structure is that every
 // Deployment is one application that should be delivered with the proxy.
 // For this reason all components are tied together in this structure.
-func NewProxyForDeployment(clienset *kubernetes.Clientset, prefix string, ns string, port string, maxTickets int, spareTickets int, maxPods int, cooldown int, podspec v1.PodTemplateSpec) *ProxyForDeployment {
+func NewProxyForDeployment(clienset *kubernetes.Clientset, prefix string, ns string, port string, maxTickets int, spareTickets int, maxPods int, cooldown int, podspec v1.PodTemplateSpec, metric *PMetric) *ProxyForDeployment {
 	proxy := ProxyForDeployment{}
 	router := gorilla.NewRouter()
 	proxy.Serverlist = proxyfunctions.NewServerlist(prefix)
 	proxy.Namespace = ns
 	proxy.Port = port
 	proxy.PodController = NewPodController(clienset, ns, prefix)
-	proxy.PodController.Informer.AddEventHandler(NewPodHandlerForServerlist(proxy.Serverlist, maxTickets))
+	proxy.PodController.Informer.AddEventHandler(NewPodHandlerForServerlist(&proxy, maxTickets))
 	proxy.Clientset = clienset
 	proxy.PodSpec = podspec
 	proxy.Stopper = make(chan struct{})
 	proxy.podWatchdogStopper = make(chan struct{})
 	proxy.podScalerInformer = proxy.Serverlist.AddInformerChannel()
 	proxy.podScalerStopper = make(chan struct{})
+	proxy.metricStopper = make(chan struct{})
 	proxy.Router = router
 	proxy.Server = &http.Server{Addr: ":" + port, Handler: router}
 	proxy.spareTickets = spareTickets
 	proxy.maxPods = maxPods
 	proxy.cooldown = cooldown
+	proxy.metric = metric
 	return &proxy
 }
 
@@ -120,6 +124,7 @@ func (proxy *ProxyForDeployment) Start() {
 			log.Println("Proxy:", proxy.Serverlist.Prefix, "ListenAndServe()", err)
 		}
 	}()
+	go proxy.UpdateAccessMetric(proxy.Serverlist.AddInformerChannel())
 }
 
 //Stop This method stops a proxy including the http server and all running
@@ -139,6 +144,7 @@ func (proxy *ProxyForDeployment) Stop() {
 	<-proxy.Stopper
 	close(proxy.Serverlist.Stop)
 	close(proxy.podScalerStopper)
+	close(proxy.metricStopper)
 	log.Println("Proxy Serverlist:", proxy.Serverlist.Prefix, "closing channles for external functions ")
 	for _, channel := range proxy.Serverlist.Informers {
 		close(channel)
@@ -170,7 +176,7 @@ func NewPodController(clientset *kubernetes.Clientset, ns string, app string) *C
 // NewDeploymentController This function creates a new Deployment controller for a proxy
 // with a hardcoded InClusterConfig and a given namespace to watch.
 // It will inform k8sTicket about creation, deletion or updates of running Deployments.
-// This controller is a major component because k8sTicket will retrive its configuration
+// This controller is a major component because k8sTicket will retrieve its configuration
 // from the Deployments.
 func NewDeploymentController(ns string) Controller {
 	// creates the in-cluster config
@@ -234,11 +240,12 @@ func NewDeploymentMetaController(ns string) Controller {
 }
 
 //NewPodHandlerForServerlist This function creates the PodHandler
-// for a given Serverlist. The handler will only handle this specific Serverlist.
+// for a given Proxy. The handler will only handle the specific Serverlist of this Proxy.
 // It will create the servers in the Serverlist based on the running Pods.
 // It will also modify them or delete them if the Pod was modified.
-// This handler implements the actions of the PodController.
-func NewPodHandlerForServerlist(list *proxyfunctions.Serverlist, maxtickets int) cache.ResourceEventHandlerFuncs {
+// This handler implements the actions of the PodController and triggers the UpdatePodMetric method.
+func NewPodHandlerForServerlist(proxy *ProxyForDeployment, maxtickets int) cache.ResourceEventHandlerFuncs {
+	list := proxy.Serverlist
 	addfunction := func(obj interface{}) {
 		pod := obj.(*v1.Pod)
 		if pod.Status.Phase == v1.PodRunning {
@@ -261,6 +268,7 @@ func NewPodHandlerForServerlist(list *proxyfunctions.Serverlist, maxtickets int)
 				}
 			}
 		}
+		proxy.UpdatePodMetric()
 	}
 	deletefunction := func(obj interface{}) {
 		pod := obj.(*v1.Pod)
@@ -269,6 +277,7 @@ func NewPodHandlerForServerlist(list *proxyfunctions.Serverlist, maxtickets int)
 		if err != nil {
 			log.Println("k8s: SetServerDeletion:  ", err)
 		}
+		proxy.UpdatePodMetric()
 	}
 	return (cache.ResourceEventHandlerFuncs{
 		AddFunc:    addfunction,
@@ -305,6 +314,7 @@ func NewPodHandlerForServerlist(list *proxyfunctions.Serverlist, maxtickets int)
 				}
 				//I think all other changes will not affect the proxy service
 			}
+			proxy.UpdatePodMetric()
 		},
 	})
 }
@@ -314,7 +324,7 @@ func NewPodHandlerForServerlist(list *proxyfunctions.Serverlist, maxtickets int)
 // create (delete) the corresponding proxy. It is possible to have more than one
 // Deployment in a namespace, but they should have different app annotations and different ports.
 // This handler implements the actions of the DeploymentController.
-func NewDeploymentHandlerForK8sconfig(c interface{}, ns string, proxies *ProxyMap) cache.ResourceEventHandlerFuncs {
+func NewDeploymentHandlerForK8sconfig(c interface{}, ns string, proxies *ProxyMap, metric *PMetric) cache.ResourceEventHandlerFuncs {
 	clientset := c.(*kubernetes.Clientset)
 	addfunction := func(obj interface{}) {
 		deployment := obj.(*appsv1.Deployment)
@@ -388,7 +398,7 @@ func NewDeploymentHandlerForK8sconfig(c interface{}, ns string, proxies *ProxyMa
 			log.Println("k8s: spareTickets: ", spareTickets)
 			log.Println("k8s: maxPods: ", maxPods)
 			log.Println("k8s: Podcooldown: ", cooldown)
-			proxies.Deployments[deployment.Name] = NewProxyForDeployment(clientset, prefix, ns, port, maxTickets, spareTickets, maxPods, cooldown, deployment.Spec.Template)
+			proxies.Deployments[deployment.Name] = NewProxyForDeployment(clientset, prefix, ns, port, maxTickets, spareTickets, maxPods, cooldown, deployment.Spec.Template, metric)
 			proxies.Deployments[deployment.Name].Start()
 		} else {
 			log.Println("k8s: NewDeploymentHandlerForK8sconfig: Deployment " + deployment.Name + " already exists!")
@@ -433,11 +443,12 @@ func NewDeploymentHandlerForK8sconfig(c interface{}, ns string, proxies *ProxyMa
 	}
 }
 
-//NewDeploymentHandlerForK8sconfig This function creates a new deployment handler.
-// It will watch for deployments in k8s with the desired annotations and
-// create (delete) the corresponding proxy. It is possible to have more than one
-// deployment in a namespace, but they should have different app annotations.
-func NewMetaDeploymentHandlerForK8sconfig(c interface{}, ns string, proxies *ProxyMap) cache.ResourceEventHandlerFuncs {
+//NewMetaDeploymentHandlerForK8sconfig This function creates a new handler for the meta data of Deployments.
+// It will only watch for updates of the meta data.
+// It does basically the same job as the handler for the Deployment, but enables the change of parameters while the application is running.
+// This handler implements the actions of the DeploymentMetaController.
+
+func NewMetaDeploymentHandlerForK8sconfig(c interface{}, ns string, proxies *ProxyMap, metric *PMetric) cache.ResourceEventHandlerFuncs {
 	clientset := c.(*kubernetes.Clientset)
 	return cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(oldObj, newObj interface{}) {
@@ -489,7 +500,7 @@ func NewMetaDeploymentHandlerForK8sconfig(c interface{}, ns string, proxies *Pro
 					proxies.Deployments[deploymentMetaOld.Name].Stop()
 					dpl := proxies.Deployments[deploymentMetaOld.Name]
 					delete(proxies.Deployments, deploymentMetaOld.Name)
-					proxies.Deployments[deploymentMetaNew.Name] = NewProxyForDeployment(clientset, prefix, ns, port, maxTickets, dpl.spareTickets, dpl.maxPods, dpl.cooldown, dpl.PodSpec)
+					proxies.Deployments[deploymentMetaNew.Name] = NewProxyForDeployment(clientset, prefix, ns, port, maxTickets, dpl.spareTickets, dpl.maxPods, dpl.cooldown, dpl.PodSpec, metric)
 					proxies.Deployments[deploymentMetaNew.Name].Start()
 				}
 			} else {
