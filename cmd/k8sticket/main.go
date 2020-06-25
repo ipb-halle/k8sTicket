@@ -25,6 +25,8 @@ func main() {
 	prometheus.MustRegister(metric.CurrentUsers)
 	prometheus.MustRegister(metric.TotalUsers)
 	http.Handle("/metrics", promhttp.Handler())
+
+	// Start prometheus metric
 	go func() {
 		err := http.ListenAndServe(":9999", nil)
 		if err != nil {
