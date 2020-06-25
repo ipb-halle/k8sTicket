@@ -116,7 +116,7 @@ func (list *Serverlist) ChangeAllMaxTickets(newMaxTickets int) {
 	}
 }
 
-// AddServer This function adds a new server to the serverlist.
+//AddServer This function adds a new server to the serverlist.
 // It requieres a name, the maximal number of tickets that can be
 // handeled by this server and the Config
 func (list *Serverlist) AddServer(name string, maxtickets int, Config Config) error {
@@ -160,7 +160,7 @@ func (list *Serverlist) SetServerDeletion(name string) error {
 	return nil
 }
 
-// RemoveServer This function tries to remove a server from the serverlist. It will only succeed if the server
+//RemoveServer This function tries to remove a server from the serverlist. It will only succeed if the server
 // is not occupied by a ticket!
 // If the server is still busy, it will be marked for deletion by setting the
 // UseAllowed bool to false. It is called by deletionmanager.
@@ -229,7 +229,7 @@ func (list *Serverlist) GetTickets() int {
 	return out
 }
 
-// addTicket This functions adds a new ticket to the Serverlist on the first
+//addTicket This functions adds a new ticket to the Serverlist on the first
 // available server. It will return an error if there are no free Tickets
 // left in the Serverlist.
 func (list *Serverlist) addTicket() (*ticket, error) {
@@ -256,7 +256,7 @@ func (list *Serverlist) AddInformerChannel() chan string {
 	return chanInformer
 }
 
-// TicketWatchdog This function checks if tickets are still valid (updated in specified time by a HTTP connection).
+//TicketWatchdog This function checks if tickets are still valid (updated in specified time by a HTTP connection).
 // If the ticket was not updated in time, it will be removed from the server.
 func (list *Serverlist) TicketWatchdog() {
 	ticker := time.NewTicker(ticketTime)
@@ -290,7 +290,7 @@ func (list *Serverlist) TicketWatchdog() {
 	}
 }
 
-// querrymanager This function checks the Tqueries and creates a new ticket if resources are
+//querrymanager This function checks the Tqueries and creates a new ticket if resources are
 // available. It is used by callServer to ask for a new Ticket.
 func (list *Serverlist) querrymanager() {
 	defer list.Mux.Unlock()
@@ -356,12 +356,12 @@ func (server *server) HasNoTickets() bool {
 	return (len(server.Tickets) == 0)
 }
 
-// hasSlots This function checks if a server has still free slots for new Tickets.
+//hasSlots This function checks if a server has still free slots for new Tickets.
 func (server *server) hasSlots() bool {
 	return len(server.Tickets) < server.maxTickets
 }
 
-// newTicket This function adds a new Ticket to a server and returns the new Ticket.
+//newTicket This function adds a new Ticket to a server and returns the new Ticket.
 func (server *server) newTicket() *ticket {
 	defer server.Mux.Unlock()
 	server.Mux.Lock()
@@ -375,7 +375,7 @@ func (server *server) newTicket() *ticket {
 	return (newTicket)
 }
 
-// update This functions updates a Ticket as long as the chan is not closed.
+//update This functions updates a Ticket as long as the chan is not closed.
 func (ticket *ticket) update(alive chan struct{}) {
 	ticker := time.NewTicker(ticketTime - 10*time.Millisecond)
 	defer ticker.Stop()

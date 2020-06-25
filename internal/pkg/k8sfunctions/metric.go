@@ -5,6 +5,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+//PMetric This struct defines our exported metrics.
+// We export the current users, the available Tickets, the scaled Pods and
+// a counter for all served users.
 type PMetric struct {
 	CurrentUsers       *prometheus.GaugeVec
 	CurrentFreeTickets *prometheus.GaugeVec
@@ -12,6 +15,8 @@ type PMetric struct {
 	TotalUsers         *prometheus.CounterVec
 }
 
+//NewPMetric This function defines the metrics from the PMetric struct.
+// We will label each value with the Prefix (application name).
 func NewPMetric() PMetric {
 	return (PMetric{
 		CurrentUsers: prometheus.NewGaugeVec(prometheus.GaugeOpts{
@@ -37,6 +42,9 @@ func NewPMetric() PMetric {
 	})
 }
 
+//UpdateAccessMetric This method uses the Serverlists ability to export informer channels
+// to inform external functions. The metrics are updated whenever a new server or
+// a new Ticket are registered or when a Ticket/server is removed.
 func (proxy *ProxyForDeployment) UpdateAccessMetric(informer chan string) {
 	for {
 		select {
@@ -52,6 +60,8 @@ func (proxy *ProxyForDeployment) UpdateAccessMetric(informer chan string) {
 	}
 }
 
+//UpdatePodMetric This method is called in the PodHandler to update the metric
+// about new or deleted autoscaled Pods by k8sTicket
 func (proxy *ProxyForDeployment) UpdatePodMetric() {
 	pods, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).List(metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
 	if err != nil {
