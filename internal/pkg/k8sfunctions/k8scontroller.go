@@ -80,7 +80,10 @@ func NewProxyMap() *ProxyMap {
 //NewProxyForDeployment The main idea of the k8sTicket structure is that every
 // Deployment is one application that should be delivered with the proxy.
 // For this reason all components are tied together in this structure.
-func NewProxyForDeployment(clienset *kubernetes.Clientset, prefix string, ns string, port string, maxTickets int, spareTickets int, maxPods int, cooldown int, podspec v1.PodTemplateSpec, metric *PMetric) *ProxyForDeployment {
+func NewProxyForDeployment(clienset *kubernetes.Clientset, prefix string, ns string,
+	port string, maxTickets int, spareTickets int, maxPods int, cooldown int,
+	podspec v1.PodTemplateSpec, metric *PMetric) *ProxyForDeployment {
+
 	proxy := ProxyForDeployment{}
 	router := gorilla.NewRouter()
 	proxy.Serverlist = proxyfunctions.NewServerlist(prefix)
@@ -181,7 +184,8 @@ func NewPodController(clientset *kubernetes.Clientset, ns string, app string) *C
 func NewDeploymentController(ns string) Controller {
 	// creates the in-cluster config
 	log.Println("New deployment controller started")
-	config, err := rest.InClusterConfig() //I guess it is maybe smarter to give a reference to an exisiting config here instead of generating a new one all the time
+	config, err := rest.InClusterConfig() //I guess it is maybe smarter to give a
+	//reference to an exisiting config here instead of generating a new one all the time
 	if err != nil {
 		panic(err.Error())
 	}
@@ -190,7 +194,8 @@ func NewDeploymentController(ns string) Controller {
 	if err != nil {
 		panic(err.Error())
 	}
-	factory := informers.NewSharedInformerFactoryWithOptions(clientset, //I am not sure if the same factory should be used for all controllers
+	factory := informers.NewSharedInformerFactoryWithOptions(clientset, //I am not
+		//sure if the same factory should be used for all controllers
 		1000000000,
 		informers.WithNamespace(ns),
 		informers.WithTweakListOptions(internalinterfaces.TweakListOptionsFunc(func(options *metav1.ListOptions) {
@@ -213,7 +218,8 @@ func NewDeploymentController(ns string) Controller {
 func NewDeploymentMetaController(ns string) Controller {
 	// creates the in-cluster config
 	log.Println("New deployment meta information controller started")
-	config, err := rest.InClusterConfig() //I guess it is maybe smarter to give a reference to an exisiting config here instead of generating a new one all the time
+	config, err := rest.InClusterConfig() //I guess it is maybe smarter to give a
+	//reference to an exisiting config here instead of generating a new one all the time
 	if err != nil {
 		panic(err.Error())
 	}
@@ -222,7 +228,8 @@ func NewDeploymentMetaController(ns string) Controller {
 	if err != nil {
 		panic(err.Error())
 	}
-	factory := metadatainformer.NewFilteredSharedInformerFactory(clientset, //I am not sure if the same factory should be used for all controllers
+	factory := metadatainformer.NewFilteredSharedInformerFactory(clientset, //I am not
+		// sure if the same factory should be used for all controllers
 		1000000000,
 		ns,
 		metadatainformer.TweakListOptionsFunc(func(options *metav1.ListOptions) {
@@ -303,9 +310,14 @@ func NewPodHandlerForServerlist(proxy *ProxyForDeployment, maxtickets int) cache
 					if podOld.Status.Conditions[conditionOld].Type == v1.PodReady {
 						for conditionNew := range podNew.Status.Conditions {
 							if podNew.Status.Conditions[conditionNew].Type == v1.PodReady {
-								if podOld.Status.Conditions[conditionOld].Status != v1.ConditionTrue && podNew.Status.Conditions[conditionNew].Status == v1.ConditionTrue {
+								if podOld.Status.Conditions[conditionOld].Status != v1.ConditionTrue &&
+									podNew.Status.Conditions[conditionNew].Status == v1.ConditionTrue {
+
 									addfunction(podNew)
-								} else if podOld.Status.Conditions[conditionOld].Status == v1.ConditionTrue && podNew.Status.Conditions[conditionNew].Status != v1.ConditionTrue {
+
+								} else if podOld.Status.Conditions[conditionOld].Status == v1.ConditionTrue &&
+									podNew.Status.Conditions[conditionNew].Status != v1.ConditionTrue {
+
 									deletefunction(podNew)
 								}
 							}
@@ -324,7 +336,8 @@ func NewPodHandlerForServerlist(proxy *ProxyForDeployment, maxtickets int) cache
 // create (delete) the corresponding proxy. It is possible to have more than one
 // Deployment in a namespace, but they should have different app annotations and different ports.
 // This handler implements the actions of the DeploymentController.
-func NewDeploymentHandlerForK8sconfig(c interface{}, ns string, proxies *ProxyMap, metric *PMetric) cache.ResourceEventHandlerFuncs {
+func NewDeploymentHandlerForK8sconfig(c interface{}, ns string,
+	proxies *ProxyMap, metric *PMetric) cache.ResourceEventHandlerFuncs {
 	clientset := c.(*kubernetes.Clientset)
 	addfunction := func(obj interface{}) {
 		deployment := obj.(*appsv1.Deployment)
@@ -349,7 +362,8 @@ func NewDeploymentHandlerForK8sconfig(c interface{}, ns string, proxies *ProxyMa
 			} else {
 				_, err := strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxTickets"])
 				if err != nil {
-					log.Println("k8s: Deployment: " + deployment.Name + "ipb-halle.de/k8sticket.deployment.maxTickets annotation malformed: " + err.Error())
+					log.Println("k8s: Deployment: " + deployment.Name +
+						"ipb-halle.de/k8sticket.deployment.maxTickets annotation malformed: " + err.Error())
 					maxTickets = 1
 				} else {
 					maxTickets, _ = strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxTickets"])
@@ -361,7 +375,8 @@ func NewDeploymentHandlerForK8sconfig(c interface{}, ns string, proxies *ProxyMa
 			} else {
 				_, err := strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.spareTickets"])
 				if err != nil {
-					log.Println("k8s: Deployment: " + deployment.Name + "ipb-halle.de/k8sticket.deployment.spareTickets annotation malformed: " + err.Error())
+					log.Println("k8s: Deployment: " + deployment.Name +
+						"ipb-halle.de/k8sticket.deployment.spareTickets annotation malformed: " + err.Error())
 					spareTickets = 2
 				} else {
 					spareTickets, _ = strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.spareTickets"])
@@ -373,7 +388,8 @@ func NewDeploymentHandlerForK8sconfig(c interface{}, ns string, proxies *ProxyMa
 			} else {
 				_, err := strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxPods"])
 				if err != nil {
-					log.Println("k8s: Deployment: " + deployment.Name + "ipb-halle.de/k8sticket.deployment.maxPods annotation malformed: " + err.Error())
+					log.Println("k8s: Deployment: " + deployment.Name +
+						"ipb-halle.de/k8sticket.deployment.maxPods annotation malformed: " + err.Error())
 					maxPods = 1
 				} else {
 					maxPods, _ = strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxPods"])
@@ -385,7 +401,8 @@ func NewDeploymentHandlerForK8sconfig(c interface{}, ns string, proxies *ProxyMa
 			} else {
 				_, err := strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.Podcooldown"])
 				if err != nil {
-					log.Println("k8s: Deployment: " + deployment.Name + "ipb-halle.de/k8sticket.deployment.Podcooldown annotation malformed: " + err.Error())
+					log.Println("k8s: Deployment: " + deployment.Name +
+						"ipb-halle.de/k8sticket.deployment.Podcooldown annotation malformed: " + err.Error())
 					cooldown = 10
 				} else {
 					cooldown, _ = strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.Podcooldown"])
@@ -398,7 +415,8 @@ func NewDeploymentHandlerForK8sconfig(c interface{}, ns string, proxies *ProxyMa
 			log.Println("k8s: spareTickets: ", spareTickets)
 			log.Println("k8s: maxPods: ", maxPods)
 			log.Println("k8s: Podcooldown: ", cooldown)
-			proxies.Deployments[deployment.Name] = NewProxyForDeployment(clientset, prefix, ns, port, maxTickets, spareTickets, maxPods, cooldown, deployment.Spec.Template, metric)
+			proxies.Deployments[deployment.Name] = NewProxyForDeployment(clientset, prefix,
+				ns, port, maxTickets, spareTickets, maxPods, cooldown, deployment.Spec.Template, metric)
 			proxies.Deployments[deployment.Name].Start()
 		} else {
 			log.Println("k8s: NewDeploymentHandlerForK8sconfig: Deployment " + deployment.Name + " already exists!")
@@ -445,10 +463,12 @@ func NewDeploymentHandlerForK8sconfig(c interface{}, ns string, proxies *ProxyMa
 
 //NewMetaDeploymentHandlerForK8sconfig This function creates a new handler for the meta data of Deployments.
 // It will only watch for updates of the meta data.
-// It does basically the same job as the handler for the Deployment, but enables the change of parameters while the application is running.
+// It does basically the same job as the handler for the Deployment,
+// but enables the change of parameters while the application is running.
 // This handler implements the actions of the DeploymentMetaController.
 
-func NewMetaDeploymentHandlerForK8sconfig(c interface{}, ns string, proxies *ProxyMap, metric *PMetric) cache.ResourceEventHandlerFuncs {
+func NewMetaDeploymentHandlerForK8sconfig(c interface{}, ns string,
+	proxies *ProxyMap, metric *PMetric) cache.ResourceEventHandlerFuncs {
 	clientset := c.(*kubernetes.Clientset)
 	return cache.ResourceEventHandlerFuncs{
 		UpdateFunc: func(oldObj, newObj interface{}) {
@@ -500,7 +520,8 @@ func NewMetaDeploymentHandlerForK8sconfig(c interface{}, ns string, proxies *Pro
 					proxies.Deployments[deploymentMetaOld.Name].Stop()
 					dpl := proxies.Deployments[deploymentMetaOld.Name]
 					delete(proxies.Deployments, deploymentMetaOld.Name)
-					proxies.Deployments[deploymentMetaNew.Name] = NewProxyForDeployment(clientset, prefix, ns, port, maxTickets, dpl.spareTickets, dpl.maxPods, dpl.cooldown, dpl.PodSpec, metric)
+					proxies.Deployments[deploymentMetaNew.Name] = NewProxyForDeployment(clientset, prefix,
+						ns, port, maxTickets, dpl.spareTickets, dpl.maxPods, dpl.cooldown, dpl.PodSpec, metric)
 					proxies.Deployments[deploymentMetaNew.Name].Start()
 				}
 			} else {
@@ -579,7 +600,8 @@ func (proxy *ProxyForDeployment) podScaler() {
 				//check ressources
 				proxy.mux.Lock()
 				if proxy.Serverlist.GetAvailableTickets() < proxy.spareTickets {
-					pods, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).List(metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
+					pods, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).List(
+						metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
 					if err != nil {
 						panic(err.Error())
 					}
@@ -615,7 +637,8 @@ func (proxy *ProxyForDeployment) podWatchdog() {
 		select {
 		case <-ticker.C:
 			log.Println("k8s: podWatchdog: Start cleaning")
-			pods, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).List(metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
+			pods, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).List(
+				metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
 			if err != nil {
 				panic("k8s: podWatchdog: " + err.Error())
 			}

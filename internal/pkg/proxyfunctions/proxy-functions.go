@@ -247,7 +247,7 @@ func (list *Serverlist) addTicket() (*ticket, error) {
 
 //AddInformerChannel This function allows to inform external
 // functions about new and removed tickets.
-// ToDo
+// It informs with "new ticket", "delete ticket", "adding server", "deleting server".
 func (list *Serverlist) AddInformerChannel() chan string {
 	chanInformer := make(chan string, 1)
 	list.Mux.Lock()
@@ -512,7 +512,8 @@ func (list *Serverlist) ServeWs(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			case <-running:
-				if err := ws.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")); err != nil {
+				if err := ws.WriteMessage(websocket.CloseMessage,
+					websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")); err != nil {
 					log.Println("Ticket: WS: WriteMessage: CloseMessage: ", err)
 				}
 				ws.Close()
@@ -520,7 +521,7 @@ func (list *Serverlist) ServeWs(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
-	go writeHello(ws, running, wswrite)
+	go writeHello(wswrite)
 	go ping(ws, running)
 	ws.SetPongHandler(func(string) error {
 		err := ws.SetReadDeadline(time.Now().Add(pongWait))
@@ -556,7 +557,7 @@ func (list *Serverlist) ServeWs(w http.ResponseWriter, r *http.Request) {
 
 //writeHello Writes a message to the frontend to welcome the user
 // Can be uses as template to send other messages to the home page.
-func writeHello(ws *websocket.Conn, done chan struct{}, writech chan string) {
+func writeHello(writech chan string) {
 	writech <- "msg#Welcome generating ticket!"
 }
 

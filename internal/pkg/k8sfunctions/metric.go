@@ -63,7 +63,8 @@ func (proxy *ProxyForDeployment) UpdateAccessMetric(informer chan string) {
 //UpdatePodMetric This method is called in the PodHandler to update the metric
 // about new or deleted autoscaled Pods by k8sTicket
 func (proxy *ProxyForDeployment) UpdatePodMetric() {
-	pods, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).List(metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
+	pods, err := proxy.Clientset.CoreV1().Pods(proxy.Namespace).List(metav1.ListOptions{
+		LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
 	if err != nil {
 		panic("Metric: UpdatePodMetric: " + err.Error())
 	}
