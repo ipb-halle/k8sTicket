@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/culpinnis/k8sTicket/internal/pkg/k8sfunctions"
+	"github.com/culpinnis/k8sTicket/pkg/k8sfunctions"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )

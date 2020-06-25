@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/culpinnis/k8sTicket/internal/pkg/proxyfunctions"
+	"github.com/culpinnis/k8sTicket/pkg/proxyfunctions"
 	"k8s.io/api/core/v1"
 )
 
