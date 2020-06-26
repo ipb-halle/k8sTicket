@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/culpinnis/k8sTicket/internal/pkg/proxyfunctions"
+	"github.com/culpinnis/k8sTicket/pkg/proxyfunctions"
 	"github.com/gorilla/mux"
 )
 
@@ -15,13 +15,13 @@ func main() {
 	list := proxyfunctions.NewServerlist(prefix)
 
 	if err := list.AddServer("one", 1, proxyfunctions.Config{Path: "/", Host: "127.0.0.1:3838"}); err != nil {
-		log.Println("Error Occured: ", err)
+		log.Println("Error Occurred: ", err)
 	}
 	if err := list.AddServer("two", 1, proxyfunctions.Config{Path: "/", Host: "127.0.0.1:3838"}); err != nil {
-		log.Println("Error Occured: ", err)
+		log.Println("Error Occurred: ", err)
 	}
 	if err := list.AddServer("three", 1, proxyfunctions.Config{Path: "/", Host: "127.0.0.1:3838"}); err != nil {
-		log.Println("Error Occured: ", err)
+		log.Println("Error Occurred: ", err)
 	}
 	go list.TicketWatchdog()
 	//no need to check the error in the test application
