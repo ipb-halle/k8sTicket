@@ -18,7 +18,7 @@ spec:
         app: k8sTicket
     spec:
       containers:
-      - image: culpinnis/k8sticket
+      - image: ipb-halle/k8sticket
         imagePullPolicy: Always
         name: k8sticket
         ports:

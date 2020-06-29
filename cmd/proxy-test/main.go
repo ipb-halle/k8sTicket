@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/culpinnis/k8sTicket/pkg/proxyfunctions"
+	"github.com/ipb-halle/k8sTicket/pkg/proxyfunctions"
 	"github.com/gorilla/mux"
 )
 

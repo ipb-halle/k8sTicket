@@ -1,4 +1,4 @@
-module github.com/culpinnis/k8sTicket
+module github.com/ipb-halle/k8sTicket
 
 go 1.13
 

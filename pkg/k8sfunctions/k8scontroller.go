@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/culpinnis/k8sTicket/pkg/proxyfunctions"
+	"github.com/ipb-halle/k8sTicket/pkg/proxyfunctions"
 	gorilla "github.com/gorilla/mux"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/api/core/v1"
