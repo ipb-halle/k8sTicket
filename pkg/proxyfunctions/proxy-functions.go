@@ -418,7 +418,7 @@ func (list *Serverlist) callServer(w http.ResponseWriter, r *http.Request, name 
 			//Middleware check Ticket
 			cookie, err := r.Cookie("stoken")
 			if err == http.ErrNoCookie {
-				http.Error(w, "No valid cookie!", http.StatusForbidden)
+				http.Error(w, "Session expired! Please open your application again by using the base path.", http.StatusForbidden)
 				list.Mux.Unlock()
 			} else {
 				//token := r.Header.Get("X-Session-Token")
@@ -440,7 +440,7 @@ func (list *Serverlist) callServer(w http.ResponseWriter, r *http.Request, name 
 					http.StripPrefix("/"+list.Prefix+"/"+name+"/", *ThisHandler).ServeHTTP(w, r)
 				} else {
 					list.Mux.Unlock()
-					http.Error(w, "Forbidden", http.StatusForbidden)
+					http.Error(w, "You do not have access to this page. Please open the application with the base path.", http.StatusForbidden)
 				}
 			}
 		} else {
@@ -548,7 +548,7 @@ func (list *Serverlist) ServeWs(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case <-ticketticker.C:
-			wswrite <- "msg#Waiting for ticket, please hold the line!"
+			wswrite <- "msg#Waiting for a free application slot. Please be patient."
 		case <-running:
 			return
 		}
@@ -558,7 +558,7 @@ func (list *Serverlist) ServeWs(w http.ResponseWriter, r *http.Request) {
 //writeHello Writes a message to the frontend to welcome the user
 // Can be uses as template to send other messages to the home page.
 func writeHello(writech chan string) {
-	writech <- "msg#Welcome generating ticket!"
+	writech <- "msg#Welcome to k8sTicket. We will redirect you to your enquired application."
 }
 
 //generateProxy Creates a proxy based on a given configuration.
