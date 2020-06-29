@@ -1,0 +1,27 @@
+FROM golang:latest
+
+# Install tools required for project
+# Run `docker build --no-cache .` to update dependencies
+
+RUN mkdir -p /go/src/github.com/ipb-halle/k8sTicket
+
+# These layers are only re-built when go.mod/go.sum are updated
+COPY go.mod go.sum  /go/src/github.com/ipb-halle/k8sTicket/
+WORKDIR /go/src/github.com/ipb-halle/k8sTicket/
+# Install library dependencies
+RUN go mod download
+
+# Copy the entire project and build it
+# This layer is rebuilt when a file has been changed in the project directory since the last build
+COPY . /go/src/github.com/ipb-halle/k8sTicket/
+RUN CGO_ENABLED=1 go build -race ./cmd/k8sticket
+#the exports are obligatory https://forums.docker.com/t/getting-panic-spanic-standard-init-linux-go-178-exec-user-process-caused-no-such-file-or-directory-red-while-running-the-docker-image/27318/14
+#otherwise docker won't start the container: standard_init_linux.go:211: exec user process caused "no such file or directory"                                                                                                                                                       exit:1
+
+# This results in a single layer image
+RUN mkdir -p /app/k8sticket/web/static
+RUN cp /go/src/github.com/ipb-halle/k8sTicket/k8sticket /app/k8sticket/k8sticket
+RUN cp /go/src/github.com/ipb-halle/k8sTicket/web/static/home.html /app/k8sticket/web/static/home.html
+
+EXPOSE 9001
+ENTRYPOINT ["/app/k8sticket/k8sticket"]
