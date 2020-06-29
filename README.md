@@ -15,4 +15,4 @@ Configuration examples are available [here (simple example)](examples/simple_exa
 ## Funding
 Developed by Chris Ulpinnis for Leibniz-Institute of Plant Biochemistry (IPB), funded by grant de.NBI 031L0107 Metabolite Annotation & Sharing Halle (MASH).
 
-<img src="https://raw.githubusercontent.com/ipb-halle/k8sTicket/master/docs/denbi-logo-color.svg?sanitize=true" height="200px">
+<img src="https://raw.githubusercontent.com/ipb-halle/k8sTicket/master/docs/denbi-logo-color.svg?sanitize=true" width="30%">
