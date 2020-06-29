@@ -149,9 +149,11 @@ func (proxy *ProxyForDeployment) Stop() {
 	close(proxy.podScalerStopper)
 	close(proxy.metricStopper)
 	log.Println("Proxy Serverlist:", proxy.Serverlist.Prefix, "closing channles for external functions ")
+	proxy.Serverlist.Mux.Lock()
 	for _, channel := range proxy.Serverlist.Informers {
 		close(channel)
 	}
+	proxy.Serverlist.Mux.Unlock()
 	log.Println("k8s podWatchdog:", proxy.Serverlist.Prefix, "stopping watchdog ")
 	close(proxy.podWatchdogStopper)
 }
@@ -669,7 +671,7 @@ func (proxy *ProxyForDeployment) podWatchdog() {
 			proxy.mux.Unlock()
 		case <-proxy.podWatchdogStopper:
 			log.Println("k8s: podWatchdog: Exiting")
-			log.Println("k8s: podWatchdog: Start cleaning")
+			//log.Println("k8s: podWatchdog: Start cleaning")
 			//The following part can remove autoscaled pods when the ProxyForDeployment is deleted.
 			//But this will kill all connections on the running pods, therefore it is disabled.
 			/*pods, err := proxy.Clientset.CoreV1().Pods(proxy.namespace).List(metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
