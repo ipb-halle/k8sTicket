@@ -134,9 +134,11 @@ func (list *Serverlist) AddServer(name string, maxtickets int, Config Config) er
 			Tickets:    make(map[string]*ticket),
 			Name:       name,
 		}
-		for _, channel := range list.Informers {
-			channel <- "adding server"
-		}
+		go func() {
+			for _, channel := range list.Informers {
+				channel <- "adding server"
+			}
+		}()
 	} else {
 		list.Mux.Unlock()
 		return (errors.New("Server with the name " + name + "already exists"))
@@ -173,9 +175,11 @@ func (list *Serverlist) removeServer(name string) error {
 	if len(list.Servers[name].Tickets) == 0 {
 		log.Println("Server: Deleting server " + name)
 		delete(list.Servers, name)
-		for _, channel := range list.Informers {
-			channel <- "deleting server"
-		}
+		go func() {
+			for _, channel := range list.Informers {
+				channel <- "deleting server"
+			}
+		}()
 	} else {
 		log.Println("Server: Server " + name + " is marked for deletion, but occupied.")
 		return (errors.New("server deletion: server still occupied"))
@@ -207,7 +211,6 @@ func (list *Serverlist) deletionmanager() {
 //GetAvailableTickets This function returns the number of all available
 //slots on all known and active servers.
 func (list *Serverlist) GetAvailableTickets() int {
-	defer list.Mux.Unlock()
 	out := 0
 	list.Mux.Lock()
 	for name := range list.Servers {
@@ -217,6 +220,7 @@ func (list *Serverlist) GetAvailableTickets() int {
 		}
 		list.Servers[name].Mux.Unlock()
 	}
+	list.Mux.Unlock()
 	return out
 }
 
@@ -278,9 +282,11 @@ func (list *Serverlist) TicketWatchdog() {
 						list.Servers[id].Tickets[token].Mux.Unlock()
 						delete(list.Servers[id].Tickets, token)
 						log.Println("Ticket: Deleting ticket " + token)
-						for _, channel := range list.Informers {
-							channel <- "delete ticket"
-						}
+						go func() {
+							for _, channel := range list.Informers {
+								channel <- "delete ticket " + token
+							}
+						}()
 					} else {
 						list.Servers[id].Tickets[token].Mux.Unlock()
 					}
@@ -318,9 +324,11 @@ func (list *Serverlist) querrymanager() {
 					channel <- t
 					close(channel)
 					list.Tqueries.Remove(ChannelElement)
-					for _, chann := range list.Informers {
-						chann <- "new ticket"
-					}
+					go func() {
+						for _, channel := range list.Informers {
+							channel <- "new ticket"
+						}
+					}()
 				} else {
 					log.Println("Serverlist: querrymanager: ", err)
 				}
