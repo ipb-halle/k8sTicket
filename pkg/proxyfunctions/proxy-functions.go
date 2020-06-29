@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"os"
+	"path"
 	"strconv"
 	"sync"
 	"time"
@@ -109,7 +110,7 @@ func tokenGenerator() string {
 
 //Serverlist methods
 
-//ChangeMaxTickets This function changes the MaxTickets on all servers
+//ChangeAllMaxTickets This function changes the MaxTickets on all servers
 func (list *Serverlist) ChangeAllMaxTickets(newMaxTickets int) {
 	for name := range list.Servers {
 		list.Servers[name].ChangeMaxTickets(newMaxTickets)
@@ -462,7 +463,12 @@ func (list *Serverlist) ServeHome(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	http.ServeFile(w, r, "web/static/home.html")
+	ex, err := os.Executable()
+	if err != nil {
+		log.Println("Proxy: ServerHome: os.Executable:", err)
+	}
+	dir := path.Dir(ex)
+	http.ServeFile(w, r, dir+"/web/static/home.html")
 }
 
 //ping This is just the Websocket ping
