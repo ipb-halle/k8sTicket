@@ -280,7 +280,9 @@ func (list *Serverlist) TicketWatchdog() {
 					list.Servers[id].Tickets[token].Mux.Lock()
 					if time.Since(list.Servers[id].Tickets[token].LastUsed).Milliseconds() > ticketTime.Milliseconds() {
 						list.Servers[id].Tickets[token].Mux.Unlock()
+						list.Servers[id].Mux.Lock()
 						delete(list.Servers[id].Tickets, token)
+						list.Servers[id].Mux.Unlock()
 						log.Println("Ticket: Deleting ticket " + token)
 						go func() {
 							for _, channel := range list.Informers {
