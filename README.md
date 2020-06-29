@@ -1,7 +1,7 @@
 # k8sTicket
 ![CI](https://github.com/culpinnis/k8sTicket/workflows/CI/badge.svg)
 
-A in-Kubernetes load-balancing controller. Its' objective is to scale stateful HTTP applications based on the number of users in Kubernetes. It is designed mainly for applications using WebSockets, but should also support XHR applications.  
+A in-Kubernetes load-balancing controller. Its' objective is to scale stateful HTTP applications based on the number of users in Kubernetes. It is mainly designed for applications using WebSockets, but should also support XHR applications.  
 
 **The current implementation is still a beta version. It is being tested in the moment.**
 
