@@ -108,7 +108,7 @@ func tokenGenerator() string {
 	return fmt.Sprintf("%x", b)
 }
 
-//Serverlist methods
+//Methods for Serverlists
 
 //ChangeAllMaxTickets This function changes the MaxTickets on all servers
 func (list *Serverlist) ChangeAllMaxTickets(newMaxTickets int) {
@@ -207,7 +207,9 @@ func (list *Serverlist) deletionmanager() {
 //GetAvailableTickets This function returns the number of all available
 //slots on all known and active servers.
 func (list *Serverlist) GetAvailableTickets() int {
+	defer list.Mux.Unlock()
 	out := 0
+	list.Mux.Lock()
 	for name := range list.Servers {
 		list.Servers[name].Mux.Lock()
 		if list.Servers[name].UseAllowed {
@@ -222,11 +224,13 @@ func (list *Serverlist) GetAvailableTickets() int {
 //tickets on all known servers.
 func (list *Serverlist) GetTickets() int {
 	out := 0
+	list.Mux.Lock()
 	for name := range list.Servers {
 		list.Servers[name].Mux.Lock()
 		out = out + len(list.Servers[name].Tickets)
 		list.Servers[name].Mux.Unlock()
 	}
+	list.Mux.Unlock()
 	return out
 }
 
@@ -294,13 +298,12 @@ func (list *Serverlist) TicketWatchdog() {
 //querrymanager This function checks the Tqueries and creates a new ticket if resources are
 // available. It is used by callServer to ask for a new Ticket.
 func (list *Serverlist) querrymanager() {
-	defer list.Mux.Unlock()
-	list.Mux.Lock()
 	for {
 		select {
 		case <-list.Stop:
 			return
 		default:
+			list.Mux.Lock()
 			if list.Tqueries.Len() > 0 {
 				log.Println("Queries: There are " + strconv.Itoa(list.Tqueries.Len()) + " waiting")
 				t, err := list.addTicket()
@@ -322,6 +325,7 @@ func (list *Serverlist) querrymanager() {
 					log.Println("Serverlist: querrymanager: ", err)
 				}
 			}
+			list.Mux.Unlock()
 			return
 		}
 	}
@@ -513,9 +517,6 @@ func (list *Serverlist) ServeWs(w http.ResponseWriter, r *http.Request) {
 				}
 				if err := ws.WriteMessage(websocket.TextMessage, []byte(string)); err != nil {
 					log.Println("Ticket: WS: WriteMessage: ", err)
-					if _, ok := <-running; ok { //if the channel is still open, close it
-						close(running)
-					}
 				}
 			case <-running:
 				if err := ws.WriteMessage(websocket.CloseMessage,

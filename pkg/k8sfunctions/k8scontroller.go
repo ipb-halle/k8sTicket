@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ipb-halle/k8sTicket/pkg/proxyfunctions"
 	gorilla "github.com/gorilla/mux"
+	"github.com/ipb-halle/k8sTicket/pkg/proxyfunctions"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -448,12 +448,13 @@ func NewDeploymentHandlerForK8sconfig(c interface{}, ns string,
 				deletionfunction(deploymentOld)
 				addfunction(deploymentNew)
 			}
+			proxies.Deployments[deploymentNew.Name].mux.Lock()
 			if deploymentNew.Spec.Template.String() != deploymentOld.Spec.Template.String() {
 				log.Println("k8s: NewDeploymentHandlerForK8sconfig: Deployment " + deploymentOld.Name + " is updated!")
-				proxies.Deployments[deploymentNew.Name].mux.Lock()
 				proxies.Deployments[deploymentNew.Name].podSpec = deploymentNew.Spec.Template
-				proxies.Deployments[deploymentNew.Name].mux.Unlock()
 			}
+			proxies.Deployments[deploymentNew.Name].mux.Unlock()
+
 			//other changes are handled by k8s itself
 			//e.g. change of pod template
 			proxies.Mux.Unlock()
