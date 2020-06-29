@@ -3,6 +3,8 @@ package k8sfunctions
 import (
 	"github.com/prometheus/client_golang/prometheus"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 //PMetric This struct defines our exported metrics.
@@ -63,7 +65,17 @@ func (proxy *ProxyForDeployment) UpdateAccessMetric(informer chan string) {
 //UpdatePodMetric This method is called in the PodHandler to update the metric
 // about new or deleted autoscaled Pods by k8sTicket
 func (proxy *ProxyForDeployment) UpdatePodMetric() {
-	pods, err := proxy.Clientset.CoreV1().Pods(proxy.namespace).List(metav1.ListOptions{
+	config, err := rest.InClusterConfig() //I guess it is maybe smarter to give a
+	//reference to an exisiting config here instead of generating a new one all the time
+	if err != nil {
+		panic(err.Error())
+	}
+	// creates the clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	}
+	pods, err := clientset.CoreV1().Pods(proxy.namespace).List(metav1.ListOptions{
 		LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
 	if err != nil {
 		panic("Metric: UpdatePodMetric: " + err.Error())
