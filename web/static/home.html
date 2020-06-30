@@ -18,7 +18,12 @@ window.onload = function () {
 
 
     if (window["WebSocket"]) {
+      if(location.protocol == 'https:') {
+        conn = new WebSocket("wss://" + document.location.host + document.location.pathname.replace(/^(.+?)\/*?$/, "$1") + "/ws");
+      }
+      else {
         conn = new WebSocket("ws://" + document.location.host + document.location.pathname.replace(/^(.+?)\/*?$/, "$1") + "/ws");
+      }
         conn.onclose = function (evt) {
             var item = document.createElement("div");
             item.innerHTML = "<b>Connection closed.</b>";
@@ -89,7 +94,7 @@ body {
     width: 100%;
     overflow: hidden;
 }
-   
+
 /*https://www.w3schools.com/howto/howto_css_responsive_header.asp*/
 /* Style the header with a grey background and some padding */
 .header {
