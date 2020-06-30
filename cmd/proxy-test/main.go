@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ipb-halle/k8sTicket/pkg/proxyfunctions"
 	"github.com/gorilla/mux"
+	"github.com/ipb-halle/k8sTicket/pkg/proxyfunctions"
 )
 
 func main() {
