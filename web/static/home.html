@@ -45,7 +45,7 @@ window.onload = function () {
                   appendLog(item);
                   messagedata_content = messagedata[1].split("@");
                   document.cookie = "stoken=".concat(messagedata_content[0], ";path=", document.location.pathname.replace(/^(.+?)\/*?$/, "$1"), "/", messagedata_content[1], "/");
-                  window.location.href = document.location.pathname + "/".concat(messagedata_content[1], "/")
+                  window.location.href = document.location.pathname.replace(/^(.+?)\/*?$/, "$1") + "/".concat(messagedata_content[1], "/")
                   break;
                 }
             }
