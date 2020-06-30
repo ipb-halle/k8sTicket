@@ -35,6 +35,7 @@ rules:
   - "apps"
   resources:
   - PartialObjectMetadata
+  - deployments
   verbs:
   - list
   - get
