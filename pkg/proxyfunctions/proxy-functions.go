@@ -41,7 +41,7 @@ const (
 	ticketTime = 3 * time.Second
 )
 
-//Stucts for Server and Tickets
+// Stucts for Server and Tickets
 
 //Config This is the config of a server. It has a Path and a Host.
 type Config struct {
@@ -108,7 +108,7 @@ func tokenGenerator() string {
 	return fmt.Sprintf("%x", b)
 }
 
-//Methods for Serverlists
+// Methods for Serverlists
 
 //ChangeAllMaxTickets This function changes the MaxTickets on all servers
 func (list *Serverlist) ChangeAllMaxTickets(newMaxTickets int) {
@@ -148,7 +148,7 @@ func (list *Serverlist) AddServer(name string, maxtickets int, Config Config) er
 	return nil
 }
 
-// SetServerDeletion This function marks a server to be deleted.
+//SetServerDeletion This function marks a server to be deleted.
 func (list *Serverlist) SetServerDeletion(name string) error {
 	list.Mux.Lock()
 	if _, ok := list.Servers[name]; !ok {
@@ -284,6 +284,11 @@ func (list *Serverlist) TicketWatchdog() {
 						delete(list.Servers[id].Tickets, token)
 						list.Servers[id].Mux.Unlock()
 						log.Println("Ticket: Deleting ticket " + token)
+						//run the notification of external functions in the background
+						//we do this because of a possible dead lock.
+						//When an external function trys to lock list.servers
+						//it would stuck (amd we could not write new messages
+						//to the channels which locks this function as well)
 						go func() {
 							for _, channel := range list.Informers {
 								channel <- "delete ticket " + token
@@ -341,7 +346,7 @@ func (list *Serverlist) querrymanager() {
 	}
 }
 
-//Server methods
+// Server methods
 
 //ChangeMaxTickets Changes the maxTickets value of a server taking the servers mutex into account.
 func (server *server) ChangeMaxTickets(newMaxTickets int) {
