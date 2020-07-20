@@ -118,7 +118,7 @@ The number of pods scaled by k8sTicket.
 The total number of users served (total number of made out tickets).
 
 
-## Questions:
+## Questions
 **Can I add another Deployment or single Pods to an existing Deployment that is already handled by k8sTicket?**
 
 Yes, you just need to add the described Labels and Annotations to the PodSpec. In that way, you can deploy different versions of your application.
