@@ -201,7 +201,7 @@ func NewDeploymentController(ns string) Controller {
 		1000000000,
 		informers.WithNamespace(ns),
 		informers.WithTweakListOptions(internalinterfaces.TweakListOptionsFunc(func(options *metav1.ListOptions) {
-			options.LabelSelector = "k8sTicket=true"
+			options.LabelSelector = "k8sticket=true"
 		})))
 	informer := factory.Apps().V1().Deployments().Informer()
 	stopper := make(chan struct{})
@@ -235,7 +235,7 @@ func NewDeploymentMetaController(ns string) Controller {
 		1000000000,
 		ns,
 		metadatainformer.TweakListOptionsFunc(func(options *metav1.ListOptions) {
-			options.LabelSelector = "k8sTicket=true"
+			options.LabelSelector = "k8sticket=true"
 		}))
 	gvr, _ := schema.ParseResourceArg("deployments.v1.apps")
 	i := factory.ForResource(*gvr)
