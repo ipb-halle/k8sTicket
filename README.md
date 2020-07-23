@@ -10,8 +10,7 @@ A in-Kubernetes load-balancing controller. Its' objective is to scale stateful H
 The documentation and complete explanations are available [in this document](docs/Documentation.md).
 
 ## Examples
-Configuration examples are available [here (simple example)](examples/simple_example) and [here (advanced example)](examples/advanced_example).
-**Not tested yet!**
+Configuration examples are available [here (simple example)](examples/simple_example) and [here (advanced example)](examples/advanced_example). A tutorial how to use k8sTicket with an existing Deployment can be found [here](docs/HowTo.md).
 
 ## Funding
 Developed by Chris Ulpinnis for Leibniz-Institute of Plant Biochemistry (IPB), funded by grant de.NBI 031L0107 Metabolite Annotation & Sharing Halle (MASH).
