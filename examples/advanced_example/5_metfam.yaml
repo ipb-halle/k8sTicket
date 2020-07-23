@@ -7,12 +7,15 @@ metadata:
     ipb-halle.de/k8sticket.deployment.tickets.max: "1"
     ipb-halle.de/k8sticket.deployment.port: "9002"
   labels:
-    ipb-halle.de/k8sTicket: "true"
+    ipb-halle.de/k8sticket: "true"
   name: metfamily
   namespace: example
 spec:
   progressDeadlineSeconds: 600
   replicas: 2
+  selector:
+    matchLabels:
+      ipb-halle.de/k8sticket.deployment.app.name: metfam
   revisionHistoryLimit: 10
   strategy:
     rollingUpdate:
