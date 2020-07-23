@@ -166,7 +166,7 @@ func NewPodController(clientset kubernetes.Interface, ns string, app string) *Co
 		1000000000,
 		informers.WithNamespace(ns),
 		informers.WithTweakListOptions(internalinterfaces.TweakListOptionsFunc(func(options *metav1.ListOptions) {
-			options.LabelSelector = "ipb-halle.de/k8sticket.deployment.app=" + app
+			options.LabelSelector = "ipb-halle.de/k8sticket.deployment.app.name=" + app
 		})))
 	informer := factory.Core().V1().Pods().Informer()
 	stopper := make(chan struct{})
@@ -201,7 +201,7 @@ func NewDeploymentController(ns string) Controller {
 		1000000000,
 		informers.WithNamespace(ns),
 		informers.WithTweakListOptions(internalinterfaces.TweakListOptionsFunc(func(options *metav1.ListOptions) {
-			options.LabelSelector = "k8sticket=true"
+			options.LabelSelector = "ipb-halle.de/k8sticket=true"
 		})))
 	informer := factory.Apps().V1().Deployments().Informer()
 	stopper := make(chan struct{})
@@ -235,7 +235,7 @@ func NewDeploymentMetaController(ns string) Controller {
 		1000000000,
 		ns,
 		metadatainformer.TweakListOptionsFunc(func(options *metav1.ListOptions) {
-			options.LabelSelector = "k8sticket=true"
+			options.LabelSelector = "ipb-halle.de/k8sticket=true"
 		}))
 	gvr, _ := schema.ParseResourceArg("deployments.v1.apps")
 	i := factory.ForResource(*gvr)
@@ -353,70 +353,70 @@ func NewDeploymentHandlerForK8sconfig(c interface{}, ns string,
 				port = deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.port"]
 			}
 			var prefix string
-			if _, ok := deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.app"]; !ok {
+			if _, ok := deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.app.name"]; !ok {
 				prefix = deployment.Name
 			} else {
-				prefix = deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.app"]
+				prefix = deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.app.name"]
 			}
 			var maxTickets int
-			if _, ok := deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxTickets"]; !ok {
+			if _, ok := deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.tickets.max"]; !ok {
 				maxTickets = 1
 			} else {
-				_, err := strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxTickets"])
+				_, err := strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.tickets.max"])
 				if err != nil {
 					log.Println("k8s: Deployment: " + deployment.Name +
-						"ipb-halle.de/k8sticket.deployment.maxTickets annotation malformed: " + err.Error())
+						"ipb-halle.de/k8sticket.deployment.tickets.max annotation malformed: " + err.Error())
 					maxTickets = 1
 				} else {
-					maxTickets, _ = strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxTickets"])
+					maxTickets, _ = strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.tickets.max"])
 				}
 			}
 			var spareTickets int
-			if _, ok := deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.spareTickets"]; !ok {
+			if _, ok := deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.tickets.spare"]; !ok {
 				spareTickets = 2
 			} else {
-				_, err := strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.spareTickets"])
+				_, err := strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.tickets.spare"])
 				if err != nil {
 					log.Println("k8s: Deployment: " + deployment.Name +
-						"ipb-halle.de/k8sticket.deployment.spareTickets annotation malformed: " + err.Error())
+						"ipb-halle.de/k8sticket.deployment.tickets.spare annotation malformed: " + err.Error())
 					spareTickets = 2
 				} else {
-					spareTickets, _ = strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.spareTickets"])
+					spareTickets, _ = strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.tickets.spare"])
 				}
 			}
 			var maxPods int
-			if _, ok := deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxPods"]; !ok {
+			if _, ok := deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.pods.max"]; !ok {
 				maxPods = 1
 			} else {
-				_, err := strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxPods"])
+				_, err := strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.pods.max"])
 				if err != nil {
 					log.Println("k8s: Deployment: " + deployment.Name +
-						"ipb-halle.de/k8sticket.deployment.maxPods annotation malformed: " + err.Error())
+						"ipb-halle.de/k8sticket.deployment.pods.max annotation malformed: " + err.Error())
 					maxPods = 1
 				} else {
-					maxPods, _ = strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxPods"])
+					maxPods, _ = strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.pods.max"])
 				}
 			}
 			var cooldown int
-			if _, ok := deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.Podcooldown"]; !ok {
+			if _, ok := deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.pods.cooldown"]; !ok {
 				cooldown = 10
 			} else {
-				_, err := strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.Podcooldown"])
+				_, err := strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.pods.cooldown"])
 				if err != nil {
 					log.Println("k8s: Deployment: " + deployment.Name +
-						"ipb-halle.de/k8sticket.deployment.Podcooldown annotation malformed: " + err.Error())
+						"ipb-halle.de/k8sticket.deployment.pods.cooldown annotation malformed: " + err.Error())
 					cooldown = 10
 				} else {
-					cooldown, _ = strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.Podcooldown"])
+					cooldown, _ = strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.pods.cooldown"])
 				}
 			}
 			log.Println("k8s: Adding deployment " + deployment.Name + " parameters: ")
-			log.Println("k8s: Port: " + port)
+			log.Println("k8s: port: " + port)
 			log.Println("k8s: app: " + prefix)
-			log.Println("k8s: MaxTickets: ", maxTickets)
-			log.Println("k8s: spareTickets: ", spareTickets)
-			log.Println("k8s: maxPods: ", maxPods)
-			log.Println("k8s: Podcooldown: ", cooldown)
+			log.Println("k8s: tickets.max: ", maxTickets)
+			log.Println("k8s: tickets.spare: ", spareTickets)
+			log.Println("k8s: pod.max: ", maxPods)
+			log.Println("k8s: pod.cooldown: ", cooldown)
 			proxies.Deployments[deployment.Name] = NewProxyForDeployment(clientset, prefix,
 				ns, port, maxTickets, spareTickets, maxPods, cooldown, deployment.Spec.Template, metric)
 			proxies.Deployments[deployment.Name].Start()
@@ -487,7 +487,7 @@ func NewMetaDeploymentHandlerForK8sconfig(c interface{}, ns string,
 			if deploymentMetaOld.GetAnnotations()["ipb-halle.de/k8sticket.deployment.port"] != deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.port"] {
 				ok = false
 			}
-			if deploymentMetaOld.GetAnnotations()["ipb-halle.de/k8sticket.deployment.app"] != deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.app"] {
+			if deploymentMetaOld.GetAnnotations()["ipb-halle.de/k8sticket.deployment.app.name"] != deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.app.name"] {
 				ok = false
 			}
 			if !ok { //here we have to restart the proxy
@@ -502,23 +502,23 @@ func NewMetaDeploymentHandlerForK8sconfig(c interface{}, ns string,
 						port = deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.port"]
 					}
 					var prefix string
-					if _, ok := deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.app"]; !ok {
+					if _, ok := deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.app.name"]; !ok {
 						prefix = deploymentMetaNew.Name
 					} else {
-						prefix = deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.app"]
+						prefix = deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.app.name"]
 					}
 					var maxTickets int
-					_, err := strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxTickets"])
+					_, err := strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.tickets.max"])
 					if err != nil {
-						log.Println("k8s: Deployment: " + deploymentMetaNew.Name + "ipb-halle.de/k8sticket.deployment.maxTickets annotation malformed: " + err.Error())
+						log.Println("k8s: Deployment: " + deploymentMetaNew.Name + "ipb-halle.de/k8sticket.deployment.tickets.max annotation malformed: " + err.Error())
 						maxTickets = 1
 					} else {
-						maxTickets, _ = strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxTickets"])
+						maxTickets, _ = strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.tickets.max"])
 					}
 					log.Println("k8s: Modifying deployment " + deploymentMetaOld.Name + " parameters: ")
-					log.Println("k8s: ", deploymentMetaNew.Name, " Port: "+port)
+					log.Println("k8s: ", deploymentMetaNew.Name, " port: "+port)
 					log.Println("k8s: ", deploymentMetaNew.Name, " app: "+prefix)
-					log.Println("k8s: ", deploymentMetaNew.Name, " MaxTickets: ", maxTickets)
+					log.Println("k8s: ", deploymentMetaNew.Name, " tickets.max: ", maxTickets)
 					proxies.Deployments[deploymentMetaOld.Name].Stop()
 					dpl := proxies.Deployments[deploymentMetaOld.Name]
 					delete(proxies.Deployments, deploymentMetaOld.Name)
@@ -527,58 +527,58 @@ func NewMetaDeploymentHandlerForK8sconfig(c interface{}, ns string,
 					proxies.Deployments[deploymentMetaNew.Name].Start()
 				}
 			} else {
-				if deploymentMetaOld.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxTickets"] != deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxTickets"] {
-					_, err := strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxTickets"])
+				if deploymentMetaOld.GetAnnotations()["ipb-halle.de/k8sticket.deployment.tickets.max"] != deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.tickets.max"] {
+					_, err := strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.tickets.max"])
 					proxies.Deployments[deploymentMetaNew.Name].mux.Lock()
 					var maxTickets int
 					if err != nil {
-						log.Println("k8s: Deployment: " + deploymentMetaNew.Name + "ipb-halle.de/k8sticket.deployment.maxTickets annotation malformed: " + err.Error())
+						log.Println("k8s: Deployment: " + deploymentMetaNew.Name + "ipb-halle.de/k8sticket.deployment.tickets.max annotation malformed: " + err.Error())
 						maxTickets = 1
 					} else {
-						maxTickets, _ = strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxTickets"])
+						maxTickets, _ = strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.tickets.max"])
 					}
-					log.Println("k8s: ", deploymentMetaNew.Name, " maxTickets: ", maxTickets)
+					log.Println("k8s: ", deploymentMetaNew.Name, " tickets.max: ", maxTickets)
 					proxies.Deployments[deploymentMetaNew.Name].Serverlist.ChangeAllMaxTickets(maxTickets)
 					proxies.Deployments[deploymentMetaNew.Name].mux.Unlock()
 				}
 			}
-			if deploymentMetaOld.GetAnnotations()["ipb-halle.de/k8sticket.deployment.spareTickets"] != deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.spareTickets"] {
-				_, err := strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.spareTickets"])
+			if deploymentMetaOld.GetAnnotations()["ipb-halle.de/k8sticket.deployment.tickets.spare"] != deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.tickets.spare"] {
+				_, err := strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.tickets.spare"])
 				proxies.Deployments[deploymentMetaNew.Name].mux.Lock()
 				if err != nil {
-					log.Println("k8s: Deployment: " + deploymentMetaNew.Name + "ipb-halle.de/k8sticket.deployment.spareTickets annotation malformed: " + err.Error())
+					log.Println("k8s: Deployment: " + deploymentMetaNew.Name + "ipb-halle.de/k8sticket.deployment.tickets.spare annotation malformed: " + err.Error())
 					proxies.Deployments[deploymentMetaNew.Name].spareTickets = 2
 				} else {
-					proxies.Deployments[deploymentMetaNew.Name].spareTickets, _ = strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.spareTickets"])
+					proxies.Deployments[deploymentMetaNew.Name].spareTickets, _ = strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.tickets.spare"])
 				}
 				log.Println("k8s: ", deploymentMetaNew.Name, " spareTickets: ", proxies.Deployments[deploymentMetaNew.Name].spareTickets)
 				proxies.Deployments[deploymentMetaNew.Name].mux.Unlock()
 			}
-			if deploymentMetaOld.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxPods"] != deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxPods"] {
-				_, err := strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxPods"])
+			if deploymentMetaOld.GetAnnotations()["ipb-halle.de/k8sticket.deployment.pods.max"] != deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.pods.max"] {
+				_, err := strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.pods.max"])
 				proxies.Deployments[deploymentMetaNew.Name].mux.Lock()
 				if err != nil {
-					log.Println("k8s: Deployment: " + deploymentMetaNew.Name + "ipb-halle.de/k8sticket.deployment.maxPods annotation malformed: " + err.Error())
+					log.Println("k8s: Deployment: " + deploymentMetaNew.Name + "ipb-halle.de/k8sticket.deployment.pods.max annotation malformed: " + err.Error())
 					proxies.Deployments[deploymentMetaNew.Name].maxPods = 1
 				} else {
-					proxies.Deployments[deploymentMetaNew.Name].maxPods, _ = strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.maxPods"])
+					proxies.Deployments[deploymentMetaNew.Name].maxPods, _ = strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.pods.max"])
 				}
 				proxies.Deployments[deploymentMetaNew.Name].podScalerInformer <- "update"
 				log.Println("k8s: ", deploymentMetaNew.Name, " maxPods: ", proxies.Deployments[deploymentMetaNew.Name].maxPods)
 				proxies.Deployments[deploymentMetaNew.Name].mux.Unlock()
 			}
-			if deploymentMetaOld.GetAnnotations()["ipb-halle.de/k8sticket.deployment.Podcooldown"] != deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.Podcooldown"] {
-				_, err := strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.Podcooldown"])
+			if deploymentMetaOld.GetAnnotations()["ipb-halle.de/k8sticket.deployment.pods.cooldown"] != deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.pods.cooldown"] {
+				_, err := strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.pods.cooldown"])
 				close(proxies.Deployments[deploymentMetaNew.Name].podWatchdogStopper)
 				proxies.Deployments[deploymentMetaNew.Name].mux.Lock()
 				proxies.Deployments[deploymentMetaNew.Name].podWatchdogStopper = make(chan struct{})
 				if err != nil {
-					log.Println("k8s: Deployment: " + deploymentMetaNew.Name + "ipb-halle.de/k8sticket.deployment.Podcooldown annotation malformed: " + err.Error())
+					log.Println("k8s: Deployment: " + deploymentMetaNew.Name + "ipb-halle.de/k8sticket.deployment.pods.cooldown annotation malformed: " + err.Error())
 					proxies.Deployments[deploymentMetaNew.Name].cooldown = 10
 				} else {
-					proxies.Deployments[deploymentMetaNew.Name].cooldown, _ = strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.Podcooldown"])
+					proxies.Deployments[deploymentMetaNew.Name].cooldown, _ = strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.pods.cooldown"])
 				}
-				log.Println("k8s: ", deploymentMetaNew.Name, " Podcooldown: ", proxies.Deployments[deploymentMetaNew.Name].cooldown)
+				log.Println("k8s: ", deploymentMetaNew.Name, " pod.cooldown: ", proxies.Deployments[deploymentMetaNew.Name].cooldown)
 				proxies.Deployments[deploymentMetaNew.Name].mux.Unlock()
 				go proxies.Deployments[deploymentMetaNew.Name].podWatchdog()
 			}
@@ -603,7 +603,7 @@ func (proxy *ProxyForDeployment) podScaler() {
 				proxy.mux.Lock()
 				if proxy.Serverlist.GetAvailableTickets() < proxy.spareTickets {
 					pods, err := proxy.Clientset.CoreV1().Pods(proxy.namespace).List(
-						metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
+						metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app.name=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
 					if err != nil {
 						panic(err.Error())
 					}
@@ -640,7 +640,7 @@ func (proxy *ProxyForDeployment) podWatchdog() {
 		case <-ticker.C:
 			log.Println("k8s: podWatchdog: Start cleaning")
 			pods, err := proxy.Clientset.CoreV1().Pods(proxy.namespace).List(
-				metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
+				metav1.ListOptions{LabelSelector: "ipb-halle.de/k8sticket.deployment.app.name=" + proxy.Serverlist.Prefix + ",ipb-halle.de/k8sTicket.scaled=true"})
 			if err != nil {
 				panic("k8s: podWatchdog: " + err.Error())
 			}

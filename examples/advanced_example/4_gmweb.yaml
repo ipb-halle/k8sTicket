@@ -4,11 +4,11 @@ metadata:
   name: goldenmutagenesisweb-deployment
   namespace: example
   labels:
-     k8sTicket: "true"
+     ipb-halle.de/k8sTicket: "true"
   annotations:
-     ipb-halle.de/k8sticket.deployment.app: gmweb
-     ipb-halle.de/k8sticket.deployment.maxPods: "2"
-     ipb-halle.de/k8sticket.deployment.maxTickets: "1"
+     ipb-halle.de/k8sticket.deployment.app.name: gmweb
+     ipb-halle.de/k8sticket.deployment.pods.max: "2"
+     ipb-halle.de/k8sticket.deployment.tickets.max: "1"
      ipb-halle.de/k8sticket.deployment.port: "9001"
 spec:
   progressDeadlineSeconds: 600
@@ -21,10 +21,9 @@ spec:
   template:
     metadata:
       labels:
-        ipb-halle.de/k8sticket.deployment.app: gmweb
+        ipb-halle.de/k8sticket.deployment.app.name: gmweb
       annotations:
-        ipb-halle.de/k8sTicket: "true"
-        ipb-halle.de/k8sTicket.port: "3838"
+        ipb-halle.de/k8sticket.pod.port: "3838"
     spec:
       containers:
       - image: sneumann/goldenmutagenesisweb

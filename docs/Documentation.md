@@ -34,7 +34,7 @@ The following Labels and Annotations can be used in your definitions:
 #### Labels:
 ##### Deployment:
 
-`k8sTicket: "true"`
+`ipb-halle.de/k8sticket: "true"`
 
 Enables k8sTicket for this Deployment
 Setting it to any other value than "true" will stop k8sTicket on this service gracefully.
@@ -52,17 +52,17 @@ This label is needed by k8sTicket to recognize which Pods belong to which applic
 
 ##### Deployments:
 
-`ipb-halle.de/k8sticket.deployment.app: name_of_your_service`
+`ipb-halle.de/k8sticket.deployment.app.name: name_of_your_service`
 
 Must be the same value as in the label set in the PodTemplate. This name must be unique in the namespace.
 k8sTicket will use this name as the path to provide your application in the proxy component.
 
-`ipb-halle.de/k8sticket.deployment.maxPods: "1"`
+`ipb-halle.de/k8sticket.deployment.pods.max: "1"`
 
 The number of Pods that k8sTicket is allowed to scale in this namespace.
 Default: "1"
 
-`ipb-halle.de/k8sticket.deployment.maxTickets: "1"`
+`ipb-halle.de/k8sticket.deployment.tickets.max: "1"`
 
 The maximal number of tickets (users) for each Pod.
 
@@ -71,23 +71,23 @@ The maximal number of tickets (users) for each Pod.
 The port of k8sTicket which will be used to serve your application. Must be unique for each k8sTicket instance in a namespace.
 Default: "1"
 
-`ipb-halle.de/k8sticket.deployment.Podcooldown: "10"`
+`ipb-halle.de/k8sticket.deployment.pods.cooldown: "10"`
 
 The time in seconds until an unused Pod will be downscaled by k8sTicket. Please note that this will also modify the interval of activity checks. That means in practice an interval of 10 seconds will lead to Pod removal between 10 and 20 seconds.
 Default: "10"
 
-`ipb-halle.de/k8sticket.deployment.spareTickets: "2"`
+`ipb-halle.de/k8sticket.deployment.tickets.spare: "2"`
 
-The number of tickets that are scaled for additional users in advance. k8sTicket will scale as many Pods as needed for this number of unoccupied tickets until `ipb-halle.de/k8sticket.deployment.maxPods` is reached. This option is notably useful if your Pods need a long time for getting available.
+The number of tickets that are scaled for additional users in advance. k8sTicket will scale as many Pods as needed for this number of unoccupied tickets until `ipb-halle.de/k8sticket.deployment.pods.max` is reached. This option is notably useful if your Pods need a long time for getting available.
 
 ##### Pods (PodTemplate of the Deployment):
 
-`ipb-halle.de/k8sTicket.port: "80"`
+`ipb-halle.de/k8sticket.pod.port: "80"`
 
 The port serving your application in the Pod.
 Default: "80"
 
-`ipb-halle.de/k8sTicket.path`
+`ipb-halle.de/k8sticket.pod.path`
 
 The HTTP path of your application in the Pod. k8sTicket will rewrite the requests to this path.
 Default: "/"
@@ -131,4 +131,4 @@ You have the option to copy your existing deployment and modify the specified La
 
 With downtime:
 
-When downtime is tolerable, you can remove "true" at the ```k8sTicket``` metadata Label, wait until all your clients disconnect and change the values of the Annotation and Label `ipb-halle.de/k8sticket.deployment.app`. Please note, that renaming the Label for the Pods will cause Kubernetes to replace all running Pods.
+When downtime is tolerable, you can remove "true" at the ```k8sTicket``` metadata Label, wait until all your clients disconnect and change the values of the Annotation and Label `ipb-halle.de/k8sticket.deployment.app.name`. Please note, that renaming the Label for the Pods will cause Kubernetes to replace all running Pods.

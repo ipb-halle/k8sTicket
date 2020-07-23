@@ -44,10 +44,10 @@ func PodToConfig(pod *v1.Pod) (proxyfunctions.Config, error) {
 	}
 	cpath := defaultPath
 	cport := defaultPort
-	if path, ok := pod.GetAnnotations()["ipb-halle.de/k8sTicket.path"]; ok {
+	if path, ok := pod.GetAnnotations()["ipb-halle.de/k8sticket.pod.path"]; ok {
 		cpath = path
 	}
-	if port, ok := pod.GetAnnotations()["ipb-halle.de/k8sTicket.port"]; ok {
+	if port, ok := pod.GetAnnotations()["ipb-halle.de/k8sticket.pod.port"]; ok {
 		_, err := strconv.Atoi(port)
 		if err != nil {
 			log.Println("k8s: Annotation: ", pod.GetName(), ": ", port, ": ", err, " Default ", defaultPort, "will be used")

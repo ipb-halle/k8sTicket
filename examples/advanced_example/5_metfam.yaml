@@ -2,12 +2,12 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   annotations:
-    ipb-halle.de/k8sticket.deployment.app: metfam
-    ipb-halle.de/k8sticket.deployment.maxPods: "3"
-    ipb-halle.de/k8sticket.deployment.maxTickets: "1"
+    ipb-halle.de/k8sticket.deployment.app.name: metfam
+    ipb-halle.de/k8sticket.deployment.pods.max: "3"
+    ipb-halle.de/k8sticket.deployment.tickets.max: "1"
     ipb-halle.de/k8sticket.deployment.port: "9002"
   labels:
-    k8sTicket: "true"
+    ipb-halle.de/k8sTicket: "true"
   name: metfamily
   namespace: example
 spec:
@@ -22,10 +22,9 @@ spec:
   template:
     metadata:
       annotations:
-        ipb-halle.de/k8sTicket: "true"
-        ipb-halle.de/k8sTicket.port: "3838"
+        ipb-halle.de/k8sticket.pod.port: "3838"
       labels:
-        ipb-halle.de/k8sticket.deployment.app: metfam
+        ipb-halle.de/k8sticket.deployment.app.name: metfam
     spec:
       containers:
       - image: sneumann/metfamily
