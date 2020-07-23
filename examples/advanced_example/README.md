@@ -19,6 +19,8 @@ This will deploy GoldenMutagenesisWeb and configure it for the use with k8sTicke
 ## 5_metfam.yaml
 This will deploy MetFamily and configure it for the use with k8sTicket.
 
+Note: We used the Label `ipb-halle.de/k8sticket.deployment.app.name: gmweb/metfam` as selector definition for k8s. You can also use your own selector, for example when you want to change the application name afterwards (The selector field is immutable in API version apps/v1).
+
 ## 6_k8sTicket_ingress.yaml
 This defines the ingress specification for GoldenMutagenesisWeb and MetFamily delivered by k8sTicket.
 Please adjust the host setting according to your DNS.
