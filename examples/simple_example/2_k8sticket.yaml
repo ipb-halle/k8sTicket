@@ -6,6 +6,9 @@ metadata:
 spec:
   progressDeadlineSeconds: 600
   replicas: 1
+  selector:
+    matchLabels:
+      app: k8sTicket
   revisionHistoryLimit: 10
   strategy:
     rollingUpdate:
@@ -18,7 +21,7 @@ spec:
         app: k8sTicket
     spec:
       containers:
-      - image: ipb-halle/k8sticket
+      - image: ipbhalle/k8sticket
         imagePullPolicy: Always
         name: k8sticket
         ports:
