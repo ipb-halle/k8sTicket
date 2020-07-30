@@ -348,7 +348,7 @@ func NewDeploymentHandlerForK8sconfig(c interface{}, ns string,
 		if _, ok := proxies.Deployments[deployment.Name]; !ok {
 			var port string
 			if _, ok := deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.port"]; !ok {
-				port = "8080"
+				port = "9001"
 			} else {
 				port = deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.port"]
 			}
@@ -497,7 +497,7 @@ func NewMetaDeploymentHandlerForK8sconfig(c interface{}, ns string,
 				} else {
 					var port string
 					if _, ok := deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.port"]; !ok {
-						port = "8080"
+						port = "9001"
 					} else {
 						port = deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.port"]
 					}
