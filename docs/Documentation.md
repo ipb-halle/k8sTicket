@@ -43,9 +43,9 @@ Warning: If Pods that were scaled by k8sTicket, are still exisitng, you have to 
 
 ##### Pods (PodTemplate of the Deployment):
 
-`ipb-halle.de/k8sticket.deployment.app: name_of_your_service`
+`ipb-halle.de/k8sticket.deployment.app.name: name_of_your_service`
 
-This label is needed by k8sTicket to recognize which Pods belong to which applications. It must be set to the same value as in the annotation `ipb-halle.de/k8sticket.deployment.app` at the deployment (following).
+This label is needed by k8sTicket to recognize which Pods belong to which applications. It must be set to the same value as in the annotation `ipb-halle.de/k8sticket.deployment.app.name` at the deployment (following).
 
 
 #### Annotations:
