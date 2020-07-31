@@ -45,7 +45,7 @@ func PodToConfig(pod *v1.Pod) (proxyfunctions.Config, error) {
 	cpath := defaultPath
 	cport := defaultPort
 	if path, ok := pod.GetAnnotations()["ipb-halle.de/k8sticket.pod.path"]; ok {
-		cpath = path
+		cpath = "/" + strings.Trim(path, "/") + "/"
 	}
 	if port, ok := pod.GetAnnotations()["ipb-halle.de/k8sticket.pod.port"]; ok {
 		_, err := strconv.Atoi(port)
