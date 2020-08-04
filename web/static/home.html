@@ -44,8 +44,8 @@ window.onload = function () {
                   item.innerText = "Got token: ".concat(messagedata[1]);
                   appendLog(item);
                   messagedata_content = messagedata[1].split("@");
-                  document.cookie = "stoken=".concat(messagedata_content[0], ";path=", document.location.pathname.replace(/^(.+?)\/*?$/, "$1"), "/", messagedata_content[1], "/");
-                  window.location.href = document.location.pathname.replace(/^(.+?)\/*?$/, "$1") + "/".concat(messagedata_content[1], "/")
+                  document.cookie = "stoken=".concat(messagedata_content[0], ";path=", document.location.pathname.replace(/^(.+?)\/*?$/, "$1"), "/", ";domain=" , messagedata_content[1], ".", document.location.hostname);
+                  window.location.href = messagedata_content[1].concat(".",document.location.pathname.replace(/^(.+?)\/*?$/, "$1") + "/")
                   break;
                 }
             }

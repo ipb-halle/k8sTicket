@@ -118,7 +118,7 @@ func (proxy *ProxyForDeployment) Start() {
 	go proxy.Serverlist.TicketWatchdog()
 	go proxy.podScaler()
 	go proxy.podWatchdog()
-	proxy.router.HandleFunc("/"+proxy.Serverlist.Prefix+"/{s}/{serverpath:.*}", proxy.Serverlist.MainHandler)
+	proxy.router.HandleFunc("/"+proxy.Serverlist.Prefix+"/{serverpath:.*}", proxy.Serverlist.MainHandler).Host("{s}.{domain:.*}")
 	proxy.router.HandleFunc("/"+proxy.Serverlist.Prefix, proxy.Serverlist.ServeHome)
 	proxy.router.HandleFunc("/"+proxy.Serverlist.Prefix+"/", proxy.Serverlist.ServeHome)
 	proxy.router.HandleFunc("/"+proxy.Serverlist.Prefix+"/ws", proxy.Serverlist.ServeWs)
