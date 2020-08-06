@@ -69,7 +69,7 @@ The maximal number of tickets (users) for each Pod.
 `ipb-halle.de/k8sticket.deployment.port: "9001"`
 
 The port of k8sTicket which will be used to serve your application. Must be unique for each k8sTicket instance in a namespace.
-Default: "1"
+Default: "9001"
 
 `ipb-halle.de/k8sticket.deployment.pods.cooldown: "10"`
 
@@ -79,6 +79,14 @@ Default: "10"
 `ipb-halle.de/k8sticket.deployment.tickets.spare: "2"`
 
 The number of tickets that are scaled for additional users in advance. k8sTicket will scale as many Pods as needed for this number of unoccupied tickets until `ipb-halle.de/k8sticket.deployment.pods.max` is reached. This option is notably useful if your Pods need a long time for getting available.
+
+`ipb-halle.de/k8sticket.ingress.dns: "true"`
+
+This annotation changes k8sTicket's rewrite strategy. By default applications are served at your.domain/name_of_your_service/podname/uid/. This works fine for applications with relative paths. Applications that generate absolute paths in the backend, won't work with the default rewrite strategy. For serving those applications, we developed an alternative approach by using DNS subdomains. When setting this annotation to "true", the application will be run at podname.uid.your.domain/name_of_your_service (it is necessary to set options in the application to run at /name_of_your_service - this configuration depends on your application). Your ingress must accept wildcards for DNS subdomains.
+
+Default: "false"
+
+Note: uid is an internal user-id and required to server more than one ticket to the same browser when `ipb-halle.de/k8sticket.deployment.tickets.max` is more than one.
 
 ##### Pods (PodTemplate of the Deployment):
 
