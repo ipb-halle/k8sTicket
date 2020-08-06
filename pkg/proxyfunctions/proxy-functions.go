@@ -431,6 +431,8 @@ func (list *Serverlist) MainHandler(w http.ResponseWriter, r *http.Request) {
 	uid := vars["u"]
 	log.Println("proxyfunctions: MainHandler: domain:", vars["domain"])
 	log.Println("proxyfunctions: MainHandler: path:", vars["serverpath"])
+	log.Println("proxyfunctions: MainHandler: uid:", vars["u"])
+	log.Println("proxyfunctions: MainHandler: servername:", vars["s"])
 	list.callServer(w, r, servername, uid)
 }
 
@@ -468,7 +470,11 @@ func (list *Serverlist) callServer(w http.ResponseWriter, r *http.Request, name 
 					list.Servers[name].Mux.Lock()
 					ThisHandler := &list.Servers[name].Handler
 					list.Servers[name].Mux.Unlock()
-					http.StripPrefix("/"+list.Prefix+"/", *ThisHandler).ServeHTTP(w, r)
+					if list.dns {
+						http.StripPrefix("/"+list.Prefix+"/", *ThisHandler).ServeHTTP(w, r)
+					} else {
+						http.StripPrefix("/"+list.Prefix+"/"+name+"/"+uid+"/", *ThisHandler).ServeHTTP(w, r)
+					}
 				} else {
 					list.Mux.Unlock()
 					http.Error(w, "You do not have access to this page. Please open the application with the base path.", http.StatusForbidden)

@@ -419,10 +419,12 @@ func NewDeploymentHandlerForK8sconfig(c interface{}, ns string,
 				}
 			}
 			var dns bool = false
-			if _, ok := deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.ingress.dns"]; ok {
-				_, err := strconv.ParseBool(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.ingress.dns"])
+			if _, ok := deployment.GetAnnotations()["ipb-halle.de/k8sticket.ingress.dns"]; ok {
+				_, err := strconv.ParseBool(deployment.GetAnnotations()["ipb-halle.de/k8sticket.ingress.dns"])
 				if err == nil {
-					dns, _ = strconv.ParseBool(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.ingress.dns"])
+					dns, _ = strconv.ParseBool(deployment.GetAnnotations()["ipb-halle.de/k8sticket.ingress.dns"])
+				} else {
+					log.Println("k8s: Deployment: " + deployment.Name + "ipb-halle.de/k8sticket.ingress.dns annotation malformed: " + err.Error())
 				}
 			}
 
@@ -446,7 +448,7 @@ func NewDeploymentHandlerForK8sconfig(c interface{}, ns string,
 	deletionfunction := func(obj interface{}) {
 		proxies.Mux.Lock()
 		deployment := obj.(*appsv1.Deployment)
-		log.Println("k8s: Deleting deployment" + deployment.Name)
+		log.Println("k8s: Deleting deployment " + deployment.Name)
 		if _, ok := proxies.Deployments[deployment.Name]; !ok {
 			log.Println("k8s: NewDeploymentHandlerForK8sconfig: Deployment " + deployment.Name + " is not known!")
 		} else {
@@ -511,7 +513,7 @@ func NewMetaDeploymentHandlerForK8sconfig(c interface{}, ns string,
 				ok = false
 			}
 			if !ok { //here we have to restart the proxy
-				log.Println("k8s: Deleting deployment" + deploymentMetaOld.Name)
+				log.Println("k8s: Deleting deployment " + deploymentMetaOld.Name)
 				if _, ok := proxies.Deployments[deploymentMetaOld.Name]; !ok {
 					log.Println("k8s: NewMetaDeploymentHandlerForK8sconfig: Deployment " + deploymentMetaOld.Name + " is not known!")
 				} else {
@@ -536,16 +538,19 @@ func NewMetaDeploymentHandlerForK8sconfig(c interface{}, ns string,
 						maxTickets, _ = strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.tickets.max"])
 					}
 					var dns bool = false
-					if _, ok := deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.ingress.dns"]; ok {
-						_, err := strconv.ParseBool(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.ingress.dns"])
+					if _, ok := deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.ingress.dns"]; ok {
+						_, err := strconv.ParseBool(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.ingress.dns"])
 						if err == nil {
-							dns, _ = strconv.ParseBool(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.ingress.dns"])
+							dns, _ = strconv.ParseBool(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.ingress.dns"])
+						} else {
+							log.Println("k8s: Deployment: " + deploymentMetaNew.Name + "ipb-halle.de/k8sticket.ingress.dns annotation malformed: " + err.Error())
 						}
 					}
 					log.Println("k8s: Modifying deployment " + deploymentMetaOld.Name + " parameters: ")
 					log.Println("k8s: ", deploymentMetaNew.Name, " port: "+port)
 					log.Println("k8s: ", deploymentMetaNew.Name, " app: "+prefix)
 					log.Println("k8s: ", deploymentMetaNew.Name, " tickets.max: ", maxTickets)
+					log.Println("k8s: ", deploymentMetaNew.Name, " ingress.dns: ", dns)
 					proxies.Deployments[deploymentMetaOld.Name].Stop()
 					dpl := proxies.Deployments[deploymentMetaOld.Name]
 					delete(proxies.Deployments, deploymentMetaOld.Name)
