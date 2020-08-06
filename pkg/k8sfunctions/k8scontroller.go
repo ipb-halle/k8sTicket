@@ -54,6 +54,7 @@ type ProxyForDeployment struct {
 	cooldown           int
 	mux                sync.Mutex
 	metric             *PMetric
+	dns                bool
 }
 
 //Controller This struct includes all components of the Controller
@@ -82,11 +83,11 @@ func NewProxyMap() *ProxyMap {
 // For this reason all components are tied together in this structure.
 func NewProxyForDeployment(clienset *kubernetes.Clientset, prefix string, ns string,
 	port string, maxTickets int, spareTickets int, maxPods int, cooldown int,
-	podspec v1.PodTemplateSpec, metric *PMetric) *ProxyForDeployment {
+	podspec v1.PodTemplateSpec, metric *PMetric, dns bool) *ProxyForDeployment {
 
 	proxy := ProxyForDeployment{}
 	router := gorilla.NewRouter()
-	proxy.Serverlist = proxyfunctions.NewServerlist(prefix)
+	proxy.Serverlist = proxyfunctions.NewServerlist(prefix, dns)
 	proxy.namespace = ns
 	proxy.port = port
 	proxy.podController = NewPodController(clienset, ns, prefix)
@@ -104,6 +105,7 @@ func NewProxyForDeployment(clienset *kubernetes.Clientset, prefix string, ns str
 	proxy.maxPods = maxPods
 	proxy.cooldown = cooldown
 	proxy.metric = metric
+	proxy.dns = dns
 	return &proxy
 }
 
@@ -118,10 +120,16 @@ func (proxy *ProxyForDeployment) Start() {
 	go proxy.Serverlist.TicketWatchdog()
 	go proxy.podScaler()
 	go proxy.podWatchdog()
-	proxy.router.HandleFunc("/"+proxy.Serverlist.Prefix+"/{serverpath:.*}", proxy.Serverlist.MainHandler).Host("{s}.{domain:.*}")
+	proxy.router.HandleFunc("/"+proxy.Serverlist.Prefix+"/ws", proxy.Serverlist.ServeWs)
+	if proxy.dns {
+		proxy.router.HandleFunc("/"+proxy.Serverlist.Prefix, proxy.Serverlist.MainHandler).Host("{s}.{u}.{domain:.*}")
+		proxy.router.HandleFunc("/"+proxy.Serverlist.Prefix+"/{serverpath:.*}", proxy.Serverlist.MainHandler).Host("{s}.{u}.{domain:.*}")
+	} else {
+		proxy.router.HandleFunc("/"+proxy.Serverlist.Prefix+"/{s}/{u}/{serverpath:.*}", proxy.Serverlist.MainHandler)
+	}
 	proxy.router.HandleFunc("/"+proxy.Serverlist.Prefix, proxy.Serverlist.ServeHome)
 	proxy.router.HandleFunc("/"+proxy.Serverlist.Prefix+"/", proxy.Serverlist.ServeHome)
-	proxy.router.HandleFunc("/"+proxy.Serverlist.Prefix+"/ws", proxy.Serverlist.ServeWs)
+
 	go func() {
 		if err := proxy.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Println("Proxy:", proxy.Serverlist.Prefix, "ListenAndServe()", err)
@@ -410,6 +418,14 @@ func NewDeploymentHandlerForK8sconfig(c interface{}, ns string,
 					cooldown, _ = strconv.Atoi(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.pods.cooldown"])
 				}
 			}
+			var dns bool = false
+			if _, ok := deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.ingress.dns"]; ok {
+				_, err := strconv.ParseBool(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.ingress.dns"])
+				if err == nil {
+					dns, _ = strconv.ParseBool(deployment.GetAnnotations()["ipb-halle.de/k8sticket.deployment.ingress.dns"])
+				}
+			}
+
 			log.Println("k8s: Adding deployment " + deployment.Name + " parameters: ")
 			log.Println("k8s: port: " + port)
 			log.Println("k8s: app: " + prefix)
@@ -417,8 +433,9 @@ func NewDeploymentHandlerForK8sconfig(c interface{}, ns string,
 			log.Println("k8s: tickets.spare: ", spareTickets)
 			log.Println("k8s: pod.max: ", maxPods)
 			log.Println("k8s: pod.cooldown: ", cooldown)
+			log.Println("k8s: ingress.dns: ", dns)
 			proxies.Deployments[deployment.Name] = NewProxyForDeployment(clientset, prefix,
-				ns, port, maxTickets, spareTickets, maxPods, cooldown, deployment.Spec.Template, metric)
+				ns, port, maxTickets, spareTickets, maxPods, cooldown, deployment.Spec.Template, metric, dns)
 			proxies.Deployments[deployment.Name].Start()
 		} else {
 			log.Println("k8s: NewDeploymentHandlerForK8sconfig: Deployment " + deployment.Name + " already exists!")
@@ -490,6 +507,9 @@ func NewMetaDeploymentHandlerForK8sconfig(c interface{}, ns string,
 			if deploymentMetaOld.GetAnnotations()["ipb-halle.de/k8sticket.deployment.app.name"] != deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.app.name"] {
 				ok = false
 			}
+			if deploymentMetaOld.GetAnnotations()["ipb-halle.de/k8sticket.ingress.dns"] != deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.ingress.dns"] {
+				ok = false
+			}
 			if !ok { //here we have to restart the proxy
 				log.Println("k8s: Deleting deployment" + deploymentMetaOld.Name)
 				if _, ok := proxies.Deployments[deploymentMetaOld.Name]; !ok {
@@ -515,6 +535,13 @@ func NewMetaDeploymentHandlerForK8sconfig(c interface{}, ns string,
 					} else {
 						maxTickets, _ = strconv.Atoi(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.tickets.max"])
 					}
+					var dns bool = false
+					if _, ok := deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.ingress.dns"]; ok {
+						_, err := strconv.ParseBool(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.ingress.dns"])
+						if err == nil {
+							dns, _ = strconv.ParseBool(deploymentMetaNew.GetAnnotations()["ipb-halle.de/k8sticket.deployment.ingress.dns"])
+						}
+					}
 					log.Println("k8s: Modifying deployment " + deploymentMetaOld.Name + " parameters: ")
 					log.Println("k8s: ", deploymentMetaNew.Name, " port: "+port)
 					log.Println("k8s: ", deploymentMetaNew.Name, " app: "+prefix)
@@ -523,7 +550,7 @@ func NewMetaDeploymentHandlerForK8sconfig(c interface{}, ns string,
 					dpl := proxies.Deployments[deploymentMetaOld.Name]
 					delete(proxies.Deployments, deploymentMetaOld.Name)
 					proxies.Deployments[deploymentMetaNew.Name] = NewProxyForDeployment(clientset, prefix,
-						ns, port, maxTickets, dpl.spareTickets, dpl.maxPods, dpl.cooldown, dpl.podSpec, metric)
+						ns, port, maxTickets, dpl.spareTickets, dpl.maxPods, dpl.cooldown, dpl.podSpec, metric, dns)
 					proxies.Deployments[deploymentMetaNew.Name].Start()
 				}
 			} else {

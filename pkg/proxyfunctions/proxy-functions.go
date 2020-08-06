@@ -57,6 +57,7 @@ type ticket struct {
 	LastUsed time.Time
 	server   *server
 	token    string
+	uid      string
 	Mux      sync.Mutex
 }
 
@@ -85,21 +86,23 @@ type Serverlist struct {
 	Mux       sync.Mutex
 	Informers []chan string //maybe use a list.List if deletion of channels gets important
 	Stop      chan struct{}
+	dns       bool
 }
 
 //NewServerlist Creates a new Serverlist, needs a prefix (app label).
-func NewServerlist(prefix string) *Serverlist {
+func NewServerlist(prefix string, dns bool) *Serverlist {
 	list := new(Serverlist)
 	list.Servers = make(map[string]*server)
 	list.Prefix = prefix
 	list.Stop = make(chan struct{})
+	list.dns = dns
 	return (list)
 }
 
 //tockenGenerator This function generates a token like 31f4ef3d.
 // It is used to identify the tickets in k8sticket.
-func tokenGenerator() string {
-	b := make([]byte, 4)
+func tokenGenerator(c int) string {
+	b := make([]byte, c)
 	_, err := rand.Read(b)
 	if err != nil {
 		log.Println("FATAL: tokenGenerator: ", err)
@@ -385,11 +388,13 @@ func (server *server) hasSlots() bool {
 func (server *server) newTicket() *ticket {
 	defer server.Mux.Unlock()
 	server.Mux.Lock()
-	token := tokenGenerator()
+	token := tokenGenerator(5)
+	uid := tokenGenerator(server.maxTickets)
 	newTicket := &ticket{
 		LastUsed: time.Now(),
 		server:   server,
 		token:    token,
+		uid:      uid,
 	}
 	server.Tickets[token] = newTicket
 	return (newTicket)
@@ -423,20 +428,22 @@ func (ticket *ticket) update(alive chan struct{}) {
 func (list *Serverlist) MainHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	servername := vars["s"]
-	log.Println("PATH:", vars["serverpath"])
-	list.callServer(w, r, servername)
+	uid := vars["u"]
+	log.Println("proxyfunctions: MainHandler: domain:", vars["domain"])
+	log.Println("proxyfunctions: MainHandler: path:", vars["serverpath"])
+	list.callServer(w, r, servername, uid)
 }
 
 //callServer This function redirects client requests to the according backend.
 // It checks the cookie, checks and updates the Ticket and gets the HTTP content.
-func (list *Serverlist) callServer(w http.ResponseWriter, r *http.Request, name string) {
+func (list *Serverlist) callServer(w http.ResponseWriter, r *http.Request, name string, uid string) {
 	alive := make(chan struct{})
 	defer close(alive)
 	list.Mux.Lock()
 	if _, ok := list.Servers[name]; ok {
 		if list.Servers[name].Handler != nil {
 			//Middleware check Ticket
-			cookie, err := r.Cookie("stoken")
+			cookie, err := r.Cookie(name + "-" + uid + "-stoken")
 			if err == http.ErrNoCookie {
 				http.Error(w, "Session expired! Please open your application again by using the base path.", http.StatusForbidden)
 				list.Mux.Unlock()
@@ -444,6 +451,10 @@ func (list *Serverlist) callServer(w http.ResponseWriter, r *http.Request, name 
 				//token := r.Header.Get("X-Session-Token")
 				token := cookie.Value
 				if ticket, ok := list.Servers[name].Tickets[token]; ok {
+					if !(list.Servers[name].Tickets[token].uid == uid) {
+						list.Mux.Unlock()
+						http.Error(w, "Wrong user ID.", http.StatusInternalServerError)
+					}
 					list.Mux.Unlock()
 					list.Servers[name].Mux.Lock()
 					curtime := time.Now()
@@ -457,7 +468,7 @@ func (list *Serverlist) callServer(w http.ResponseWriter, r *http.Request, name 
 					list.Servers[name].Mux.Lock()
 					ThisHandler := &list.Servers[name].Handler
 					list.Servers[name].Mux.Unlock()
-					http.StripPrefix("/"+list.Prefix+"/"+name+"/", *ThisHandler).ServeHTTP(w, r)
+					http.StripPrefix("/"+list.Prefix+"/", *ThisHandler).ServeHTTP(w, r)
 				} else {
 					list.Mux.Unlock()
 					http.Error(w, "You do not have access to this page. Please open the application with the base path.", http.StatusForbidden)
@@ -468,7 +479,7 @@ func (list *Serverlist) callServer(w http.ResponseWriter, r *http.Request, name 
 		}
 	} else {
 		list.Mux.Unlock()
-		http.NotFound(w, r)
+		list.ServeHome(w, r)
 	}
 }
 
@@ -487,7 +498,12 @@ func (list *Serverlist) ServeHome(w http.ResponseWriter, r *http.Request) {
 		log.Println("Proxy: ServerHome: os.Executable:", err)
 	}
 	dir := path.Dir(ex)
-	http.ServeFile(w, r, dir+"/web/static/home.html")
+	if list.dns {
+		http.ServeFile(w, r, dir+"/web/static/homeDNS.html")
+
+	} else {
+		http.ServeFile(w, r, dir+"/web/static/home.html")
+	}
 }
 
 //ping This is just the Websocket ping
@@ -562,7 +578,7 @@ func (list *Serverlist) ServeWs(w http.ResponseWriter, r *http.Request) {
 	list.querrymanager()
 	go func() {
 		ticket := <-querry
-		wswrite <- "tkn#" + ticket.token + "@" + ticket.server.Name
+		wswrite <- "tkn#" + ticket.token + "@" + ticket.server.Name + "@" + ticket.uid
 		close(running)
 	}()
 	ticketticker := time.NewTicker(10 * time.Second)
