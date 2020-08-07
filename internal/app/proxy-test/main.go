@@ -12,7 +12,7 @@ import (
 func main() {
 	r := mux.NewRouter()
 	var prefix = "gmweb"
-	list := proxyfunctions.NewServerlist(prefix)
+	list := proxyfunctions.NewServerlist(prefix, false)
 
 	if err := list.AddServer("one", 1, proxyfunctions.Config{Path: "/", Host: "127.0.0.1:3838"}); err != nil {
 		log.Println("Error Occurred: ", err)
