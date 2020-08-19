@@ -5,16 +5,16 @@ k8sTicket is a reverse proxy with a built-in Kubernetes controller. It is design
 - interactive data analysis software often leads to unpredictable load based on the user's calculations and actions
 	- scaling based on resources like memory or CPU usage is not effective in this situation
 	- the quality of service can be influenced by calculations of other users
- 	- running sessions are downscaled instead of idle ones
-- you can not ensure how users are distributed across the several Pods in your cluster
+	- running sessions are downscaled instead of idle ones
+- you can not ensure how users are distributed across several Pods in your cluster
 	- the number of users can not be limited directly
 	- error messages can be hard to interpret by the user
 	- sometimes it is necessary to isolate the users
 	- exclusive use of resources can not be guaranteed
 
-k8sTicket tries to overcome those limitations by implementing an almost invisible ticket queue system for the users. Each user will use one exclusive slot on a Pod.
+k8sTicket tries to overcome those limitations by implementing an almost invisible ticket queue system. Each user will use one exclusive slot on a Pod.
 ## Technical Details
-k8sTicket has two main components: A reverse proxy based on Gorilla web toolkit and the Kubernetes custom controller based on the client-go library.
+k8sTicket has two main components: A reverse proxy based on Gorilla Web Toolkit and the Kubernetes custom controller based on the client-go library.
 k8sTicket can only handle stateful web applications with continuous server-client-communication like WebSocket- or XHR-applications. It was tested successfully with R-Shiny applications.
 
 ![](k8sTicket.png)
@@ -23,7 +23,7 @@ k8sTicket can only handle stateful web applications with continuous server-clien
 When being started, k8sTicket will configure itself by reading Kubernetes metadata annotations and labels. It will recognize Deployments that should be used and register the associated Pods. Afterwards, it will calculate the number of available tickets. When a client connects to the service, a WebSocket connection to the k8sTicket server will be established by Javascript. The server handles the query and checks for available resources. If there are free resources left, a new ticket will be made out and transferred to the client (as a session cookie). Then the client will be redirected to an address proxying the service of the Pod. Whenever a new ticket is created, k8sTicket checks if there are still enough spare tickets for new connections. When there are not enough tickets left, new Pods are scaled in Kubernetes. Those Pods will be removed when they are idle. A ticket will be marked as active as long as there is an established HTTP connection (or HTTP connections in short intervals).
 
 ### Configuration
-k8sTicket can serve services of one or more Deployments. Please note that a different port must be used for each service. k8sTicket is limited to the namespace it is operating in. Examples are provided in [this folder](../examples/). k8sTicket can be easily used with your existing Deployments without much reconfiguration. Because k8sTicket will proxy your applications, you do not need to configure ingress definitions for them anymore.
+k8sTicket can serve services of one or more Deployments. Please note that a different port must be used for each service. k8sTicket is limited to the namespace it is operating in. Examples are provided in [this folder](../examples/). k8sTicket can be easily used with your existing Deployments without much reconfiguration. Because k8sTicket will proxy your applications, you do not need to configure separate ingress definitions for them anymore.
 
 **How to configure k8sTicket?**
 
@@ -39,7 +39,8 @@ The following Labels and Annotations can be used in your definitions:
 Enables k8sTicket for this Deployment
 Setting it to any other value than "true" will stop k8sTicket on this service gracefully.
 This means existing connections will be served until the user quits; new connections are not accepted anymore
-Warning: If Pods that were scaled by k8sTicket, are still exisitng, you have to remove them by yourself.
+
+Warning: If Pods that were scaled by k8sTicket, are still existing, you have to remove them by yourself. They will be removed automatically if the value is set to "true" again.
 
 ##### Pods (PodTemplate of the Deployment):
 
@@ -64,7 +65,7 @@ Default: "1"
 
 `ipb-halle.de/k8sticket.deployment.tickets.max: "1"`
 
-The maximal number of tickets (users) for each Pod.
+The maximal number of tickets (users) for each Pod. Default: "1"
 
 `ipb-halle.de/k8sticket.deployment.port: "9001"`
 
@@ -86,7 +87,7 @@ This annotation changes k8sTicket's rewrite strategy. By default applications ar
 
 Default: "false"
 
-Note: uid is an internal user-id and required to server more than one ticket to the same browser when `ipb-halle.de/k8sticket.deployment.tickets.max` is more than one.
+Note: uid is an internal user-id and required to server more than one ticket to the same browser when `ipb-halle.de/k8sticket.deployment.tickets.max` is more than one. Nonetheless it also used when `ipb-halle.de/k8sticket.deployment.tickets.max` is set to one.
 
 ##### Pods (PodTemplate of the Deployment):
 

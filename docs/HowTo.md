@@ -1,9 +1,9 @@
 # Setting up k8sTicket on exisiting Deployments
-In this tutorial we describe how to setup k8sTicket with applications that are already deployed in Kubernetes. 
+In this tutorial we describe how to setup k8sTicket with applications that are already deployed in Kubernetes.
 ## Existing configuration
-We assume that your exisiting application is deployed at least with 3 configurations: A Deployment, a Service and an Ingress definition.
+We assume that your exisiting application is deployed at least with 3 definitions: A Deployment, a Service and an Ingress definition.
 ### DeploymentSpec
-This yaml deploys the application GoldenMutagenesisWeb with two replicas in the namespace example in Kubernetes. 
+This yaml deploys the application GoldenMutagenesisWeb with two replicas in the namespace example in Kubernetes.
 
 ````yaml
 apiVersion: apps/v1
@@ -75,7 +75,7 @@ spec:
   type: ClusterIP
 ````
 ### IngressSpec
-This is the definition of the ingress to make the service available outside of the cluster. A rewrite rule is defined, because the application runs at / in the container while it should be availalbe at /GoldenMutagenesisWeb in public.
+This is the definition of the ingress to make the service available outside of the cluster. A rewrite rule is defined, because the application runs at / in the container while it should be available at /GoldenMutagenesisWeb in public.
 
 ````yaml
 apiVersion: extensions/v1beta1
@@ -100,7 +100,7 @@ spec:
         path: /GoldenMutagenesisWeb(/|$)(.*)
 ````
 ## Modifications to existing configuration
-Now we will modify the configuration to use k8sTicket with the exisiting Deployment.
+Now we will modify the configuration to use k8sTicket with the existing Deployment.
 ### DeploymentSpec
 Specific Labels and Annotations must be added to the Deployment. A general list of useable Labels and Annotations can be found [here](Documentation.md#labels).
 
@@ -131,7 +131,7 @@ spec:
       labels:
         ipb-halle.de/k8sticket.deployment.app.name: GoldenMutagenesisWeb
       annotations:
-        ipb-halle.de/k8sTicket.port: "3838"
+        ipb-halle.de/k8sticket.pod.port: "3838"
     spec:
       containers:
       - image: sneumann/goldenmutagenesisweb
@@ -147,12 +147,12 @@ spec:
       terminationGracePeriodSeconds: 30
 ````
 
-We have added `ipb-halle.de/k8sticket.deployment.app.name: GoldenMutagenesisWeb` as Label at the Pod template definition and as Annotation at the Deployment metadata. Defining this value twice is required. Furthermore, we added the Label `ipb-halle.de/k8sTicket: "true"` to the Deployment metadata. To tell k8sTicket the port of our example application we set `ipb-halle.de/k8sticket.port: "3838"` as Annotation to the Pod metadata template.
+We have added `ipb-halle.de/k8sticket.deployment.app.name: GoldenMutagenesisWeb` as Label at the Pod template definition and as Annotation at the Deployment metadata. Defining this value twice is required. Furthermore, we added the Label `ipb-halle.de/k8sTicket: "true"` to the Deployment metadata. To tell k8sTicket the port of our example application we set `ipb-halle.de/k8sticket.pod.port: "3838"` as Annotation to the Pod metadata template.
 All other configuration values of k8sTicket will be kept default. That means k8sTicket will run at port 9001.
 We kept the Label `app: gmweb` because the field selector is immutable in API version apps/v1.
 
 ### ServiceSpec
-Instead of defining a Service for our GoldenMutagenesisWeb example application, a Service definition for k8sTicket is required. 
+Instead of defining a Service for our GoldenMutagenesisWeb example application, a Service definition for k8sTicket is required.
 
 ````yaml
 apiVersion: v1
@@ -191,10 +191,10 @@ spec:
           servicePort: gmweb
         path: /GoldenMutagenesisWeb
 ````
-We have removed the rewrite instructions here, because k8sTicket will proxy and rewrite the requests. 
+We have removed the rewrite instructions here, because k8sTicket will proxy and rewrite the requests.
 
 ## k8sTicket Deployment
-Finally we have to deploy k8sTicket in the example namspace. This step could also be the first one.
+Finally we have to deploy k8sTicket in the example namespace. This step could also be the first one.
 Because k8sTicket needs to read and write information to the cluster, it requires a ServiceAccount, a Role and a RoleBinding. For security reasons those definitions are limited to the example namespace.
 
 ````yaml
@@ -224,7 +224,7 @@ rules:
   - update
   - delete
 - apiGroups:
-  - ""
+  - apps
   resources:
   - deployments
   verbs:
@@ -232,7 +232,7 @@ rules:
   - watch
   - list
 - apiGroups:
-  - "apps"
+  - apps
   resources:
   - PartialObjectMetadata
   verbs:
@@ -256,7 +256,7 @@ subjects:
   name: k8sticket-watcher
 
 ````
-After creating the cluster permissions, k8sTicket can be deployed. 
+After creating the cluster permissions, k8sTicket can be deployed.
 
 ````yaml
 apiVersion: apps/v1
@@ -304,4 +304,4 @@ spec:
       serviceAccountName: k8sticket-watcher
       terminationGracePeriodSeconds: 30
 ````
-You can access our example application now. 
+You can access our example application now.
